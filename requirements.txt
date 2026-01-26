@@ -1,0 +1,20 @@
+# SAGE - 商业潜力 AI 评测系统
+# 依赖版本锁定文件
+
+# 核心框架
+gradio==4.44.0
+huggingface_hub==0.24.7
+
+# LLM 调用
+openai==1.12.0
+
+# PDF 处理
+pypdf==3.17.0
+
+# 网络请求
+requests==2.31.0
+
+# 注意：
+# 1. 使用 pip install -r requirements.txt 安装所有依赖
+# 2. 如需更新某个库，请手动修改版本号并测试兼容性
+# 3. huggingface_hub 必须 < 1.0 才能与 Gradio 4.44.0 兼容
