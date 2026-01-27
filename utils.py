@@ -38,13 +38,14 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         logger.error(f"解析 PDF 失败: {pdf_path}, 错误: {e}")
         return f"PDF 提取失败: {str(e)}"
 
-def google_search(query: str) -> str:
+def google_search(query: str, start_id: int = 1) -> str:
     """
     使用 Serper.dev API 获取 Google 搜索结果。
     包含完整的网络异常捕获和状态码检查。
 
     参数:
         query (str): 搜索关键词。
+        start_id (int): 起始 Source ID 索引。
 
     返回:
         str: 格式化后的搜索摘要结果。
@@ -63,14 +64,15 @@ def google_search(query: str) -> str:
         search_data = response.json()
         
         results = []
-        for item in search_data.get('organic', [])[:5]:
+        for i, item in enumerate(search_data.get('organic', [])[:5], start_id):
             title = item.get('title', '无标题')
             snippet = item.get('snippet', '无内容')
-            results.append(f"标题: {title}\n摘要: {snippet}\n")
+            url_link = item.get('link', '无链接')
+            results.append(f"[S{i}] URL: {url_link} Title: {title} Snippet: {snippet}")
             
         if not results:
             logger.warning(f"关键词 '{query}' 未找到相关搜索结果。")
-            return "未找到相关搜索结果。"
+            return ""
             
         return "\n".join(results)
     except requests.exceptions.RequestException as e:

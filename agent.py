@@ -79,10 +79,14 @@ class BusinessResearcher:
         prompt = (
             "你是一名资深的商业情报分析师，擅长从商业计划书中提取高质量的搜索关键词。\n\n"
             f"项目赛道：**{detected_industry}**\n"
-            "提取 4-5 个搜索关键词，用于在 Google 查找该赛道的市场数据、融资信息和竞品情况。\n\n"
-            "### 策略要求\n"
-            "1. 宏观行业词：查询市场规模、CAGR、融资报告。\n"
-            "2. 微观对手词：查询行业龙头、替代方案。如果赛道较新，必须搜索其上位赛道的巨头玩家。\n\n"
+            "提取 8 个精准搜索关键词，用于在 Google 查找该赛道的市场数据、融资信息和竞品情况。\n\n"
+            "### 策略要求（必须包含以下模式的变体）：\n"
+            f"1. \"{detected_industry} 市场规模 报告\"\n"
+            "2. 针对核心竞品的营收、利润数据查询\n"
+            f"3. \"{detected_industry} 失败案例/风险因素\"\n"
+            f"4. \"{detected_industry} 商业模式分析/深度研报\"\n"
+            "5. 宏观行业趋势与未来预测\n"
+            "6. 细分领域的技术壁垒与专利情况\n\n"
             "### 输出格式\n"
             "仅返回关键词，用英文逗号分隔。\n\n"
             f"商业计划书片段：\n{bp_snippet}"
@@ -96,10 +100,19 @@ class BusinessResearcher:
             )
             keywords_text = response.choices[0].message.content.strip()
             keywords = [k.strip() for k in keywords_text.split(',')]
-            return keywords[:5]
+            return keywords[:8]
         except Exception as e:
             logger.error(f"提取关键词失败: {e}")
-            return [f"{detected_industry} 市场报告", f"{detected_industry} 竞品"]
+            return [
+                f"{detected_industry} 市场规模 报告", 
+                f"{detected_industry} 竞品 营收 数据",
+                f"{detected_industry} 失败案例",
+                f"{detected_industry} 商业模式分析",
+                f"{detected_industry} 投融资报告",
+                f"{detected_industry} 技术趋势",
+                f"{detected_industry} 政策环境",
+                f"{detected_industry} 核心玩家"
+            ]
 
     def analyze_bp_pipeline(self, pdf_path: str) -> Dict:
         """
@@ -126,9 +139,13 @@ class BusinessResearcher:
             
             # 4. 联网检索
             search_context = ""
+            current_id = 1
             for kw in keywords:
-                result = utils.google_search(kw)
-                search_context += f"--- 关键词: {kw} ---\n{result}\n"
+                result = utils.google_search(kw, start_id=current_id)
+                if result:
+                    search_context += f"--- 关键词: {kw} ---\n{result}\n"
+                    # 更新下一个关键词的起始 ID
+                    current_id += result.count("[S")
 
             # 5. LLM 深度分析
             logger.info("发起 LLM 深度分析...")
@@ -149,7 +166,7 @@ class BusinessResearcher:
             result = json.loads(clean_json)
 
             # 6. JSON 完整性校验与兜底
-            required_keys = ["project_identity", "industry_analysis", "competitors", "funding_ecosystem", "pain_point_validation", "public_sentiment", "risk_assessment"]
+            required_keys = ["project_identity", "industry_analysis", "business_analysis", "competitors", "raw_evidence", "vc_grill", "funding_ecosystem", "pain_point_validation", "public_sentiment", "risk_assessment"]
             for key in required_keys:
                 if key not in result:
                     logger.warning(f"字段 {key} 缺失，正在进行默认填充。")
@@ -157,12 +174,18 @@ class BusinessResearcher:
                         result[key] = {
                             "project_name": "Unknown Project",
                             "slogan": "N/A",
-                            "elevator_pitch": "未能从 BP 中提取有效简介",
+                            "description": "未能从 BP 中提取深度描述",
+                            "revenue_model": "N/A",
+                            "team_background": "Not Mentioned",
                             "stage": "未知"
                         }
                     elif key == "industry_analysis":
                         result[key] = {"detected_industry": detected_industry, "market_size": "Not Found", "cagr": "Not Found", "source": "N/A"}
+                    elif key == "business_analysis":
+                        result[key] = {"business_model_critique": "N/A", "technical_moat": "N/A"}
                     elif key == "competitors": result[key] = []
+                    elif key == "raw_evidence": result[key] = []
+                    elif key == "vc_grill": result[key] = []
                     elif key == "funding_ecosystem": result[key] = {"heat_level": "Unknown", "trend_summary": "Not Found"}
                     elif key == "pain_point_validation": result[key] = {"score": 0, "reason": "N/A"}
                     elif key == "public_sentiment": result[key] = {"label": "Neutral", "summary": "Not Found"}
