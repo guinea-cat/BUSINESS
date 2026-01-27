@@ -2,6 +2,7 @@
 agent.py
 商业分析智能体核心模块。
 负责协调 PDF 解析、赛道识别、联网搜索及全领域 VC 视角深度分析。
+优化版：搜索模块并发执行，大幅缩短总体分析时间。
 """
 
 import json
@@ -9,6 +10,7 @@ import logging
 import traceback
 from typing import List, Dict
 from openai import OpenAI
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import config
 import utils
 
@@ -122,6 +124,38 @@ class BusinessResearcher:
                 f"{detected_industry} global trends"
             ]
 
+    def _concurrent_search(self, keywords: List[str]) -> Dict[str, str]:
+        """
+        并发执行 Google 搜索（性能优化关键点）。
+        
+        参数:
+            keywords: 搜索关键词列表
+            
+        返回:
+            Dict[关键词, 搜索结果]
+        """
+        search_results = {}
+        
+        def search_worker(kw: str, idx: int):
+            """单个搜索任务"""
+            start_id = idx * 5 + 1  # 每个关键词搜索 5 条，ID 依次累加
+            result = utils.google_search(kw, start_id=start_id)
+            return (kw, result)
+        
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {
+                executor.submit(search_worker, kw, i): kw 
+                for i, kw in enumerate(keywords)
+            }
+            
+            for future in as_completed(futures):
+                kw, result = future.result()
+                if result:
+                    search_results[kw] = result
+        
+        logger.info(f"并发搜索完成：{len(search_results)}/{len(keywords)} 个关键词获得结果")
+        return search_results
+
     def analyze_bp_pipeline(self, pdf_path: str) -> Dict:
         """
         全流程商业分析流水线（升级版：视觉信息前置融合，确保图片型 PDF 分析有效性）。
@@ -134,7 +168,7 @@ class BusinessResearcher:
         """
         try:
             # 1. 文本与图像提取
-            logger.info(f"开启流水线分析（多模态），处理文件: {pdf_path}")
+            logger.info(f"开启流水线分析（多模态+并发优化），处理文件: {pdf_path}")
             pdf_content = utils.extract_content_from_pdf(pdf_path)
             bp_full_text = pdf_content["text"]
             bp_images = pdf_content["images"]
@@ -145,7 +179,7 @@ class BusinessResearcher:
             # 2. 视觉内容解析（前置到赛道识别之前，关键修复点）
             visual_descriptions = ""
             if bp_images:
-                logger.info(f"检测到 {len(bp_images)} 张有效图片，正在发起视觉分析...")
+                logger.info(f"检测到 {len(bp_images)} 张有效图片，正在发起并发视觉分析...")
                 visual_descriptions = utils.describe_visual_elements(self.vision_client, bp_images)
                 logger.info(f"视觉分析完成，提取了 {len(visual_descriptions)} 字符的图表描述")
 
@@ -163,15 +197,14 @@ class BusinessResearcher:
             # 4. 关键词获取（现在基于增强文本，关键词更精准）
             keywords = self._get_search_keywords(enhanced_text, detected_industry)
             
-            # 5. 联网检索
+            # 5. 并发联网检索（性能优化关键点）
+            logger.info("正在并发执行 Google 搜索...")
+            search_results = self._concurrent_search(keywords)
+            
+            # 组装搜索上下文
             search_context = ""
-            current_id = 1
-            for kw in keywords:
-                result = utils.google_search(kw, start_id=current_id)
-                if result:
-                    search_context += f"--- 关键词: {kw} ---\n{result}\n"
-                    # 更新下一个关键词的起始 ID
-                    current_id += result.count("[S")
+            for kw, result in search_results.items():
+                search_context += f"--- 关键词: {kw} ---\n{result}\n"
 
             # 6. LLM 深度分析（融合文本、视觉与搜索情报）
             logger.info("发起 LLM 深度融合分析...")
@@ -196,8 +229,8 @@ class BusinessResearcher:
             clean_json = utils.clean_json_string(raw_output)
             result = json.loads(clean_json)
 
-            # 7. JSON 完整性校验与兜底
-            required_keys = ["project_identity", "industry_analysis", "business_analysis", "competitors", "raw_evidence", "vc_grill", "funding_ecosystem", "pain_point_validation", "public_sentiment", "risk_assessment"]
+            # 7. JSON 完整性校验与兜底（新增 valuation_model）
+            required_keys = ["project_identity", "industry_analysis", "business_analysis", "competitors", "raw_evidence", "vc_grill", "valuation_model", "funding_ecosystem", "pain_point_validation", "public_sentiment", "risk_assessment"]
             for key in required_keys:
                 if key not in result:
                     logger.warning(f"字段 {key} 缺失，正在进行默认填充。")
@@ -217,6 +250,44 @@ class BusinessResearcher:
                     elif key == "competitors": result[key] = []
                     elif key == "raw_evidence": result[key] = []
                     elif key == "vc_grill": result[key] = []
+                    elif key == "valuation_model":
+                        result[key] = {
+                            "total_score": 50,
+                            "rating": "C",
+                            "summary": "数据严重不足，无法进行全面量化评估",
+                            "dimensions": {
+                                "market": {
+                                    "score": 10,
+                                    "max_score": 20,
+                                    "analysis": "缺乏市场规模与增长数据",
+                                    "sub_scores": {"market_size": 5, "timing_growth": 5}
+                                },
+                                "product": {
+                                    "score": 10,
+                                    "max_score": 25,
+                                    "analysis": "未能识别核心技术壁垒与创新点",
+                                    "sub_scores": {"uniqueness": 5, "moat": 5}
+                                },
+                                "business_model": {
+                                    "score": 10,
+                                    "max_score": 20,
+                                    "analysis": "商业模式与盈利路径不明确",
+                                    "sub_scores": {"profitability": 5, "scalability": 5}
+                                },
+                                "team": {
+                                    "score": 10,
+                                    "max_score": 25,
+                                    "analysis": "BP 中未提及核心团队背景",
+                                    "sub_scores": {"founder_capability": 5, "completeness": 5}
+                                },
+                                "execution": {
+                                    "score": 10,
+                                    "max_score": 10,
+                                    "analysis": "缺乏业务验证与合规风险评估依据",
+                                    "sub_scores": {"traction": 5, "risk_safety": 5}
+                                }
+                            }
+                        }
                     elif key == "funding_ecosystem": result[key] = {"heat_level": "Unknown", "trend_summary": "Not Found"}
                     elif key == "pain_point_validation": result[key] = {"score": 0, "reason": "N/A"}
                     elif key == "public_sentiment": result[key] = {"label": "Neutral", "summary": "Not Found"}
