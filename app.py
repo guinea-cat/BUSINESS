@@ -134,7 +134,7 @@ def main():
                     with gr.Tab("📊 原始数据"):
                         out_json = gr.JSON()
         
-        btn.click(fn=run_analysis, inputs=pdf_input, outputs=[out_md, out_json])
+        btn.click(fn=run_analysis, inputs=pdf_input, outputs=[out_md, out_json], api_name=False)
     
     demo.launch(server_port=8081, inbrowser=True)
 

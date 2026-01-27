@@ -32,18 +32,30 @@ class BusinessResearcher:
             api_key=api_key,
             base_url=config.LLM_BASE_URL
         )
+        
+        # 视觉专用客户端 (解决 400 错误：解耦多模态与文本请求)
+        vision_api_key = getattr(config, "VISION_API_KEY", api_key)
+        vision_base_url = getattr(config, "VISION_BASE_URL", config.LLM_BASE_URL)
+        
+        # 如果视觉配置与文本配置一致且为 DeepSeek，则会有兼容性风险
+        # 建议用户在 config.py 中明确配置 VISION_BASE_URL 为支持 Vision 的端点
+        self.vision_client = OpenAI(
+            api_key=vision_api_key,
+            base_url=vision_base_url,
+            timeout=120.0  # 增加超时限制，适应代理环境下的图片上传
+        )
 
     def _detect_industry(self, bp_text: str) -> str:
         """
         第一阶段：识别项目细分赛道。
         
         参数:
-            bp_text (str): BP 全文。
+            bp_text (str): BP 全文（可包含图表描述的增强文本）。
             
         返回:
             str: 识别出的赛道名称。
         """
-        bp_snippet = bp_text[:3000]
+        bp_snippet = bp_text[:20000]
         prompt = (
             "你是一名全领域 VC 合伙人，擅长快速识别创业项目所属的细分赛道。\n\n"
             "### 任务\n"
@@ -69,26 +81,24 @@ class BusinessResearcher:
 
     def _get_search_keywords(self, bp_text: str, detected_industry: str) -> List[str]:
         """
-        第二阶段：基于赛道生成精准搜索关键词。
+        第二阶段：基于赛道生成中英文双语搜索关键词。
         
         参数:
-            bp_text (str): BP 文本。
+            bp_text (str): BP 文本（可包含图表描述的增强文本）。
             detected_industry (str): 识别出的赛道。
         """
-        bp_snippet = bp_text[:20000]
+        bp_snippet = bp_text[:30000]
         prompt = (
-            "你是一名资深的商业情报分析师，擅长从商业计划书中提取高质量的搜索关键词。\n\n"
+            "你是一名资深的商业情报分析师，擅长从商业计划书中提取高质量的中英文双语搜索关键词。\n\n"
             f"项目赛道：**{detected_industry}**\n"
-            "提取 8 个精准搜索关键词，用于在 Google 查找该赛道的市场数据、融资信息和竞品情况。\n\n"
-            "### 策略要求（必须包含以下模式的变体）：\n"
-            f"1. \"{detected_industry} 市场规模 报告\"\n"
-            "2. 针对核心竞品的营收、利润数据查询\n"
-            f"3. \"{detected_industry} 失败案例/风险因素\"\n"
-            f"4. \"{detected_industry} 商业模式分析/深度研报\"\n"
-            "5. 宏观行业趋势与未来预测\n"
-            "6. 细分领域的技术壁垒与专利情况\n\n"
+            "### 任务\n"
+            "提取 10 个精准搜索关键词（5 个中文，5 个英文），用于在 Google 查找全球市场数据、国际竞品和商业模式趋势。\n\n"
+            "### 策略要求：\n"
+            "1. **中文关键词**：覆盖国内市场规模、政策环境、本土竞品分析。\n"
+            "2. **英文关键词**：覆盖全球行业报告（Global Market Report）、海外巨头动态（Leading Players）、国际融资趋势（Funding Trends）。\n"
+            "3. **必须包含模式变体**：例如 \"{Industry} market size\"、\"{Competitor} revenue\"、\"{Industry} failure cases\"。\n\n"
             "### 输出格式\n"
-            "仅返回关键词，用英文逗号分隔。\n\n"
+            "仅返回关键词，用英文逗号分隔。不要有任何解释。\n\n"
             f"商业计划书片段：\n{bp_snippet}"
         )
         
@@ -100,23 +110,21 @@ class BusinessResearcher:
             )
             keywords_text = response.choices[0].message.content.strip()
             keywords = [k.strip() for k in keywords_text.split(',')]
-            return keywords[:8]
+            return keywords[:10]
         except Exception as e:
-            logger.error(f"提取关键词失败: {e}")
+            logger.error(f"提取双语关键词失败: {e}")
             return [
-                f"{detected_industry} 市场规模 报告", 
-                f"{detected_industry} 竞品 营收 数据",
-                f"{detected_industry} 失败案例",
-                f"{detected_industry} 商业模式分析",
-                f"{detected_industry} 投融资报告",
-                f"{detected_industry} 技术趋势",
-                f"{detected_industry} 政策环境",
-                f"{detected_industry} 核心玩家"
+                f"{detected_industry} 市场规模", 
+                f"{detected_industry} market size",
+                f"{detected_industry} competitors analysis",
+                f"{detected_industry} 商业模式",
+                f"{detected_industry} business model",
+                f"{detected_industry} global trends"
             ]
 
     def analyze_bp_pipeline(self, pdf_path: str) -> Dict:
         """
-        全流程商业分析流水线。
+        全流程商业分析流水线（升级版：视觉信息前置融合，确保图片型 PDF 分析有效性）。
         
         参数:
             pdf_path (str): PDF 文件路径。
@@ -125,19 +133,37 @@ class BusinessResearcher:
             Dict: 格式化的商业分析 JSON 报告。
         """
         try:
-            # 1. 文本提取
-            logger.info(f"开启流水线分析，处理文件: {pdf_path}")
-            bp_full_text = utils.extract_text_from_pdf(pdf_path)
+            # 1. 文本与图像提取
+            logger.info(f"开启流水线分析（多模态），处理文件: {pdf_path}")
+            pdf_content = utils.extract_content_from_pdf(pdf_path)
+            bp_full_text = pdf_content["text"]
+            bp_images = pdf_content["images"]
+            
             if "失败" in bp_full_text:
                 return {"error": "PDF 内容无法读取"}
 
-            # 2. 赛道感知
-            detected_industry = self._detect_industry(bp_full_text)
+            # 2. 视觉内容解析（前置到赛道识别之前，关键修复点）
+            visual_descriptions = ""
+            if bp_images:
+                logger.info(f"检测到 {len(bp_images)} 张有效图片，正在发起视觉分析...")
+                visual_descriptions = utils.describe_visual_elements(self.vision_client, bp_images)
+                logger.info(f"视觉分析完成，提取了 {len(visual_descriptions)} 字符的图表描述")
+
+            # 2.5 创建增强文本（核心修复：融合原文本与视觉描述）
+            enhanced_text = bp_full_text
+            if visual_descriptions and visual_descriptions != "未发现显著视觉元素。":
+                logger.info("正在融合文本与视觉信息，生成增强分析上下文...")
+                enhanced_text = f"{bp_full_text}\n\n{visual_descriptions}"
+            else:
+                logger.warning("未检测到有效视觉内容，仅使用纯文本进行分析")
+
+            # 3. 赛道感知（现在基于增强文本，图片型 PDF 也能准确识别）
+            detected_industry = self._detect_industry(enhanced_text)
             
-            # 3. 关键词获取
-            keywords = self._get_search_keywords(bp_full_text, detected_industry)
+            # 4. 关键词获取（现在基于增强文本，关键词更精准）
+            keywords = self._get_search_keywords(enhanced_text, detected_industry)
             
-            # 4. 联网检索
+            # 5. 联网检索
             search_context = ""
             current_id = 1
             for kw in keywords:
@@ -147,12 +173,17 @@ class BusinessResearcher:
                     # 更新下一个关键词的起始 ID
                     current_id += result.count("[S")
 
-            # 5. LLM 深度分析
-            logger.info("发起 LLM 深度分析...")
-            bp_summary = bp_full_text[:5000]
+            # 6. LLM 深度分析（融合文本、视觉与搜索情报）
+            logger.info("发起 LLM 深度融合分析...")
+            bp_summary = enhanced_text[:30000]  # 使用增强文本而非原始文本
+            fusion_context = (
+                f"### 📄 商业计划书内容摘要（包含文本与图表解析）\n{bp_summary}\n\n"
+                f"### 🔍 外部搜索情报\n{search_context}"
+            )
+            
             messages = [
                 {"role": "system", "content": config.SYSTEM_PROMPT},
-                {"role": "user", "content": f"BP 摘要内容:\n{bp_summary}\n\n外部搜索情报:\n{search_context}"}
+                {"role": "user", "content": fusion_context}
             ]
             
             response = self.client.chat.completions.create(
@@ -165,7 +196,7 @@ class BusinessResearcher:
             clean_json = utils.clean_json_string(raw_output)
             result = json.loads(clean_json)
 
-            # 6. JSON 完整性校验与兜底
+            # 7. JSON 完整性校验与兜底
             required_keys = ["project_identity", "industry_analysis", "business_analysis", "competitors", "raw_evidence", "vc_grill", "funding_ecosystem", "pain_point_validation", "public_sentiment", "risk_assessment"]
             for key in required_keys:
                 if key not in result:

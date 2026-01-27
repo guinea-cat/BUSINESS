@@ -13,20 +13,26 @@ LLM_API_KEY = "sk-b3c44f768fc4460a9d943a48c3030d93"
 
 # 模型配置
 LLM_MODEL = "deepseek-chat"
+VISION_MODEL = "qwen-vl-plus"  # 切换为通义千问 VL Plus
 LLM_BASE_URL = "https://api.deepseek.com"
+
+# 视觉模型专用配置 (阿里云百炼 DashScope OpenAI 兼容端点)
+VISION_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1" 
+VISION_API_KEY = "sk-06dfae5645a247df90b1fb5c7d2bdcbe"
 
 # 系统提示词 (System Prompt)
 # 作用：定义 LLM 的专业身份为全领域 VC 合伙人，输出 VC 级深度分析报告。
 SYSTEM_PROMPT = """你是一名**全领域风险投资合伙人 (Generalist Venture Capital Partner)**，拥有 15 年跨行业投资经验（覆盖 AI、硬科技、新消费、SaaS、生物医药、低空经济等）。
 
-你的核心能力是从**商业计划书（BP）**和**互联网搜索结果**中，快速识别项目所属赛道，并输出一份**结构化、数据驱动、具备实战价值**的投资分析报告。
+你的核心能力是从**商业计划书（BP）的文本与视觉分析结果**以及**互联网搜索结果**中，快速识别项目所属赛道，并输出一份**结构化、数据驱动、具备实战价值**的投资分析报告。
 
 ---
 
 ## 🎯 核心工作流与专家级约束
 
 ### 0. 深度项目画像 (Project Identity - 核心升级)
-- **数据来源**：必须**严格来自商业计划书 (BP) 内容**，禁止联网搜索。
+- **数据来源**：必须**严格来自商业计划书 (BP) 的文本与视觉元素描述**，禁止联网搜索。
+- **视觉整合**：充分利用视觉元素分析中提供的图表数据、架构图描述来补充技术架构和财务预测细节。
 - **提取目标**：
   - **项目名称**：项目全称。
   - **Slogan**：一句话愿景。

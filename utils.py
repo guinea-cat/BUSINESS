@@ -8,47 +8,123 @@ import re
 import json
 import logging
 import requests
-from pypdf import PdfReader
-from typing import List, Optional
+import fitz  # PyMuPDF
+import io
+import base64
+from PIL import Image
+from typing import List, Optional, Dict
 import config
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def extract_text_from_pdf(pdf_path: str) -> str:
+def extract_content_from_pdf(pdf_path: str) -> Dict[str, any]:
     """
-    从 PDF 文件中提取纯文本内容。
-
-    参数:
-        pdf_path (str): PDF 文件路径。
-
-    返回:
-        str: 提取的纯文本内容。若失败则返回错误提示。
+    使用 PyMuPDF 从 PDF 中提取文本和图像内容。
+    优化：对提取的图像进行缩放和压缩，减少上传带宽消耗。
     """
-    text = ""
+    full_text = ""
+    images_base64 = []
+    
     try:
-        reader = PdfReader(pdf_path)
-        for page in reader.pages:
-            content = page.extract_text()
-            if content:
-                text += content + "\n"
-        return text.strip()
+        doc = fitz.open(pdf_path)
+        for page_index in range(len(doc)):
+            page = doc[page_index]
+            
+            # 1. 提取文本
+            full_text += page.get_text() + "\n"
+            
+            # 2. 提取图像
+            image_list = page.get_images(full=True)
+            for img_index, img in enumerate(image_list):
+                xref = img[0]
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image["image"]
+                
+                # 过滤太小的图标类图片 (例如小于 5KB)
+                if len(image_bytes) < 5000:
+                    continue
+                
+                # --- 优化：图片缩放与压缩，减小上传体积 ---
+                try:
+                    img_obj = Image.open(io.BytesIO(image_bytes))
+                    # 如果宽度超过 1024，进行等比例缩放
+                    if img_obj.width > 1024:
+                        ratio = 1024 / img_obj.width
+                        new_size = (1024, int(img_obj.height * ratio))
+                        img_obj = img_obj.resize(new_size, Image.Resampling.LANCZOS)
+                    
+                    # 转换为 JPEG 并压缩画质为 75
+                    if img_obj.mode in ("RGBA", "P"):
+                        img_obj = img_obj.convert("RGB")
+                    
+                    buffer = io.BytesIO()
+                    img_obj.save(buffer, format="JPEG", quality=75)
+                    image_bytes = buffer.getvalue()
+                    img_ext = "jpg"
+                except Exception as e:
+                    logger.warning(f"图片处理失败，保留原图: {e}")
+                    img_ext = base_image["ext"]
+
+                # 转换为 base64 以便后续传给 VLM
+                base64_img = base64.b64encode(image_bytes).decode('utf-8')
+                images_base64.append({
+                    "page": page_index + 1,
+                    "data": base64_img,
+                    "ext": img_ext
+                })
+        
+        doc.close()
+        return {
+            "text": full_text.strip(),
+            "images": images_base64[:50]  # 限制提取前 50 张重要图片，平衡深度与速度
+        }
     except Exception as e:
         logger.error(f"解析 PDF 失败: {pdf_path}, 错误: {e}")
-        return f"PDF 提取失败: {str(e)}"
+        return {"text": f"PDF 提取失败: {str(e)}", "images": []}
+
+def describe_visual_elements(client, images: List[Dict]) -> str:
+    """
+    调用多模态模型对提取的图片进行理解和描述。
+    """
+    if not images:
+        return "未发现显著视觉元素。"
+        
+    visual_context = "### 🖼️ 商业计划书视觉元素分析\n"
+    
+    for i, img in enumerate(images):
+        prompt = "这是一张商业计划书（BP）中的图片，请分析其中的关键信息（如数据图表趋势、商业模式图解、产品原型特征或财务预测数据）。请简洁明了地描述图片内容。"
+        
+        try:
+            # 注意：此处假设使用的是支持多模态的 OpenAI 兼容接口
+            response = client.chat.completions.create(
+                model=config.VISION_MODEL,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/{img['ext']};base64,{img['data']}"}
+                            }
+                        ],
+                    }
+                ],
+                max_tokens=500
+            )
+            description = response.choices[0].message.content
+            visual_context += f"**[图表 {i+1} (第 {img['page']} 页)]**: {description}\n\n"
+        except Exception as e:
+            logger.warning(f"分析图片 {i+1} 失败: {e}")
+            continue
+            
+    return visual_context
 
 def google_search(query: str, start_id: int = 1) -> str:
     """
     使用 Serper.dev API 获取 Google 搜索结果。
-    包含完整的网络异常捕获和状态码检查。
-
-    参数:
-        query (str): 搜索关键词。
-        start_id (int): 起始 Source ID 索引。
-
-    返回:
-        str: 格式化后的搜索摘要结果。
     """
     url = "https://google.serper.dev/search"
     headers = {
@@ -85,21 +161,12 @@ def google_search(query: str, start_id: int = 1) -> str:
 def clean_json_string(text: str) -> str:
     """
     从 LLM 输出的原始文本中提取 JSON 字符串。
-    支持 Markdown 代码块及原始花括号提取。
-
-    参数:
-        text (str): LLM 输出内容。
-
-    返回:
-        str: 清洗后的 JSON 字符串。
     """
-    # 匹配 Markdown 代码块
     json_block_pattern = r"```json\s*(.*?)\s*```"
     match = re.search(json_block_pattern, text, re.DOTALL)
     if match:
         return match.group(1).strip()
     
-    # 匹配第一个和最后一个大括号
     braces_pattern = r"(\{.*\})"
     match = re.search(braces_pattern, text, re.DOTALL)
     if match:
@@ -110,12 +177,6 @@ def clean_json_string(text: str) -> str:
 def extract_funding_amounts(text: str) -> List[str]:
     """
     利用正则表达式从文本中提取融资金额。
-
-    参数:
-        text (str): 待处理文本。
-
-    返回:
-        List[str]: 提取到的金额列表。
     """
     patterns = [
         r"\d+\.?\d*\s*亿\s*(美元|元|RMB|USD)?",
@@ -127,10 +188,8 @@ def extract_funding_amounts(text: str) -> List[str]:
     results = []
     for pattern in patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
-        # re.findall 返回 tuple 如果有分组，这里简化处理
         if matches:
             if isinstance(matches[0], tuple):
-                # 重新搜索以获取完整匹配项
                 full_matches = [m.group(0) for m in re.finditer(pattern, text, re.IGNORECASE)]
                 results.extend(full_matches)
             else:
