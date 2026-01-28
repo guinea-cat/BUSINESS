@@ -156,6 +156,126 @@ class BusinessResearcher:
         logger.info(f"并发搜索完成：{len(search_results)}/{len(keywords)} 个关键词获得结果")
         return search_results
 
+    def _generate_basic_info(self, fusion_context: str) -> Dict:
+        """
+        【并发子任务 1】生成基础信息组：project_identity, industry_analysis, business_analysis
+        
+        原理：这 3 个字段主要来自 BP 内容本身，无需复杂推理，可以快速生成。
+        
+        参数：
+            fusion_context (str): 融合后的上下文（BP 内容 + 搜索结果）
+        
+        返回：
+            Dict: 包含 3 个字段的 JSON 字典
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model=config.LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": config.PROMPT_IDENTITY_BUSINESS},
+                    {"role": "user", "content": fusion_context}
+                ],
+                temperature=0.3
+            )
+            raw_output = response.choices[0].message.content
+            clean_json = utils.clean_json_string(raw_output)
+            # 使用 repair_json 修复可能的截断问题
+            repaired_json = utils.repair_json(clean_json)
+            return json.loads(repaired_json)
+        except Exception as e:
+            logger.error(f"生成基础信息组失败: {e}")
+            return {}
+
+    def _generate_external_intel(self, fusion_context: str) -> Dict:
+        """
+        【并发子任务 2】生成外部情报组：competitors, funding_ecosystem, public_sentiment, raw_evidence
+        
+        原理：这 4 个字段主要基于联网搜索结果，关注外部市场情报。
+        
+        参数：
+            fusion_context (str): 融合后的上下文（BP 内容 + 搜索结果）
+        
+        返回：
+            Dict: 包含 4 个字段的 JSON 字典
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model=config.LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": config.PROMPT_MARKET_COMPETITION},
+                    {"role": "user", "content": fusion_context}
+                ],
+                temperature=0.3
+            )
+            raw_output = response.choices[0].message.content
+            clean_json = utils.clean_json_string(raw_output)
+            # 使用 repair_json 修复可能的截断问题
+            repaired_json = utils.repair_json(clean_json)
+            return json.loads(repaired_json)
+        except Exception as e:
+            logger.error(f"生成外部情报组失败: {e}")
+            return {}
+
+    def _generate_valuation(self, fusion_context: str) -> Dict:
+        """
+        【并发子任务 3】生成估值模型：valuation_model
+        
+        原理：专注于量化评分，将复杂的评估任务拆分为独立的并发任务。
+        
+        参数：
+            fusion_context (str): 融合后的上下文（BP 内容 + 搜索结果）
+        
+        返回：
+            Dict: 包含 valuation_model 字段的 JSON 字典
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model=config.LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": config.PROMPT_VALUATION},
+                    {"role": "user", "content": fusion_context}
+                ],
+                temperature=0.3
+            )
+            raw_output = response.choices[0].message.content
+            clean_json = utils.clean_json_string(raw_output)
+            # 使用 repair_json 修复可能的截断问题
+            repaired_json = utils.repair_json(clean_json)
+            return json.loads(repaired_json)
+        except Exception as e:
+            logger.error(f"生成估值模型失败: {e}")
+            return {}
+
+    def _generate_risks_and_qa(self, fusion_context: str) -> Dict:
+        """
+        【并发子任务 4】生成风险评估与拷问：vc_grill, pain_point_validation, risk_assessment
+        
+        原理：专注于风险识别和尖锐提问，减轻单个任务的负担。
+        
+        参数：
+            fusion_context (str): 融合后的上下文（BP 内容 + 搜索结果）
+        
+        返回：
+            Dict: 包含 3 个字段的 JSON 字典
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model=config.LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": config.PROMPT_RISK_QA},
+                    {"role": "user", "content": fusion_context}
+                ],
+                temperature=0.3
+            )
+            raw_output = response.choices[0].message.content
+            clean_json = utils.clean_json_string(raw_output)
+            # 使用 repair_json 修复可能的截断问题
+            repaired_json = utils.repair_json(clean_json)
+            return json.loads(repaired_json)
+        except Exception as e:
+            logger.error(f"生成风险评估组失败: {e}")
+            return {}
+
     def analyze_bp_pipeline(self, pdf_path: str) -> Dict:
         """
         全流程商业分析流水线（升级版：视觉信息前置融合，确保图片型 PDF 分析有效性）。
@@ -206,28 +326,36 @@ class BusinessResearcher:
             for kw, result in search_results.items():
                 search_context += f"--- 关键词: {kw} ---\n{result}\n"
 
-            # 6. LLM 深度分析（融合文本、视觉与搜索情报）
-            logger.info("发起 LLM 深度融合分析...")
+            # 6. 并发 JSON 生成（性能优化关键点：将长文本生成拆分为 4 个子任务）
+            logger.info("发起并发 JSON 生成（4 个子任务）...")
             bp_summary = enhanced_text[:30000]  # 使用增强文本而非原始文本
             fusion_context = (
                 f"### 📄 商业计划书内容摘要（包含文本与图表解析）\n{bp_summary}\n\n"
                 f"### 🔍 外部搜索情报\n{search_context}"
             )
             
-            messages = [
-                {"role": "system", "content": config.SYSTEM_PROMPT},
-                {"role": "user", "content": fusion_context}
-            ]
+            # 并发调用 4 个生成方法（Map-Reduce 模式）
+            result = {}
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                # 提交 4 个并发任务
+                future_basic = executor.submit(self._generate_basic_info, fusion_context)
+                future_intel = executor.submit(self._generate_external_intel, fusion_context)
+                future_valuation = executor.submit(self._generate_valuation, fusion_context)
+                future_risks = executor.submit(self._generate_risks_and_qa, fusion_context)
+                
+                # 等待所有任务完成并合并结果
+                basic_info = future_basic.result()
+                external_intel = future_intel.result()
+                valuation_data = future_valuation.result()
+                risks_qa_data = future_risks.result()
+                
+                # 合并 4 个字典
+                result.update(basic_info)
+                result.update(external_intel)
+                result.update(valuation_data)
+                result.update(risks_qa_data)
             
-            response = self.client.chat.completions.create(
-                model=config.LLM_MODEL,
-                messages=messages,
-                temperature=0.5
-            )
-            
-            raw_output = response.choices[0].message.content
-            clean_json = utils.clean_json_string(raw_output)
-            result = json.loads(clean_json)
+            logger.info("并发 JSON 生成完成，正在校验完整性...")
 
             # 7. JSON 完整性校验与兜底（新增 valuation_model）
             required_keys = ["project_identity", "industry_analysis", "business_analysis", "competitors", "raw_evidence", "vc_grill", "valuation_model", "funding_ecosystem", "pain_point_validation", "public_sentiment", "risk_assessment"]

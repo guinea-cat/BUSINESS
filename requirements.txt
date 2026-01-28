@@ -16,6 +16,9 @@ Pillow==10.4.0
 requests==2.31.0
 httpx==0.27.2
 
+# 环境变量管理
+python-dotenv==1.0.0
+
 # 注意：
 # 1. 使用 pip install -r requirements.txt 安装所有依赖
 # 2. 如需更新某个库，请手动修改版本号并测试兼容性

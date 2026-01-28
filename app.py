@@ -6,6 +6,7 @@ Gradio Web 界面演示。
 import gradio as gr
 import config
 import logging
+import time
 from agent import BusinessResearcher
 
 # 初始化日志
@@ -15,28 +16,76 @@ logger = logging.getLogger(__name__)
 def run_analysis(file_obj):
     """
     处理上传文件并调用分析流水线。
+    使用 yield 机制实时返回进度状态（优化用户体验）。
     """
     if file_obj is None:
-        return "# ⚠️ 请先上传 PDF 文件", {}
+        yield "# ⚠️ 请先上传 PDF 文件", {}
+        return
     
     try:
+        # 记录开始时间
+        start_time = time.time()
+        
         pdf_path = file_obj.name
         researcher = BusinessResearcher(config.LLM_API_KEY)
         
-        # 调用核心流水线方法
+        # 阶段 1：PDF 解析
+        elapsed = time.time() - start_time
+        yield f"## 📄 正在解析 PDF 与图片... (已耗时 {elapsed:.1f}s)\n\n请稍候，系统正在提取文本内容和视觉元素。", {}
+        
+        import utils
+        pdf_content = utils.extract_content_from_pdf(pdf_path)
+        bp_full_text = pdf_content["text"]
+        bp_images = pdf_content["images"]
+        
+        # 阶段 2：视觉分析
+        if bp_images:
+            elapsed = time.time() - start_time
+            yield f"## 🖼️ 正在并发视觉分析... (已耗时 {elapsed:.1f}s)\n\n检测到 {len(bp_images)} 张图片，正在进行 2x2 拼图与并发分析。", {}
+            visual_descriptions = utils.describe_visual_elements(researcher.vision_client, bp_images)
+        else:
+            visual_descriptions = ""
+        
+        # 阶段 3：赛道识别
+        enhanced_text = bp_full_text
+        if visual_descriptions and visual_descriptions != "未发现显著视觉元素。":
+            enhanced_text = f"{bp_full_text}\n\n{visual_descriptions}"
+        
+        elapsed = time.time() - start_time
+        yield f"## 🎯 正在识别项目赛道... (已耗时 {elapsed:.1f}s)\n\n基于 BP 内容进行赛道分类。", {}
+        detected_industry = researcher._detect_industry(enhanced_text)
+        
+        # 阶段 4：并发搜索
+        elapsed = time.time() - start_time
+        yield f"## 🔍 正在全网搜索... (已耗时 {elapsed:.1f}s)\n\n赛道：**{detected_industry}**\n\n正在并发搜索 10 个关键词，获取市场数据、竞品信息和融资动态。", {}
+        keywords = researcher._get_search_keywords(enhanced_text, detected_industry)
+        search_results = researcher._concurrent_search(keywords)
+        
+        # 阶段 5：并发 JSON 生成
+        elapsed = time.time() - start_time
+        yield f"## 🧠 正在生成最终研报... (已耗时 {elapsed:.1f}s)\n\n并发执行 **4 路并发分析**：\n- 基础信息组（项目画像 + 赛道分析）\n- 外部情报组（竞品 + 融资生态）\n- **估值模型组**（VC 评分）\n- **风险评估组**（拷问 + 痛点 + 风险）", {}
+        
+        # 调用完整的分析流水线
         result = researcher.analyze_bp_pipeline(pdf_path)
         
-        # 格式化 Markdown 报告
-        markdown_report = format_markdown(result)
-        return markdown_report, result
+        # 计算总耗时
+        total_time = time.time() - start_time
+        
+        # 格式化 Markdown 报告（包含总耗时）
+        markdown_report = format_markdown(result, total_time)
+        yield markdown_report, result
         
     except Exception as e:
         logger.error(f"UI 处理异常: {e}")
-        return f"# ❌ 系统处理异常\n{str(e)}", {"status": "error"}
+        yield f"# ❌ 系统处理异常\n{str(e)}", {"status": "error"}
 
-def format_markdown(data: dict) -> str:
+def format_markdown(data: dict, total_time: float = 0) -> str:
     """
     将分析结果 JSON 转换为 Markdown 研报。
+    
+    参数:
+        data: 分析结果字典
+        total_time: 总耗时（秒）
     """
     from datetime import datetime
     import re
@@ -114,7 +163,8 @@ def format_markdown(data: dict) -> str:
     else:
         md += "- 暂无外部参考链接。\n"
     
-    md += f"\n---\n*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*"
+    md += f"\n---\n*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*\n\n"
+    md += f"*本次分析总耗时: {total_time:.1f} 秒*"
     return md
 
 def main():

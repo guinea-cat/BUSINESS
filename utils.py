@@ -175,12 +175,18 @@ def stitch_images(images: List[Dict], grid_size: int = 2) -> List[Dict]:
 def _analyze_single_image(client, img: Dict, index: int) -> tuple:
     """
     分析单张图片的工作函数（用于并发执行）。
+    支持拼接图和普通图两种模式。
     
-    返回: (index, description) 元组
+    返回: (index, page_info, description) 元组
     """
     try:
-        prompt = "这是一张商业计划书（BP）中的图片，请分析其中的关键信息（如数据图表趋势、商业模式图解、产品原型特征或财务预测数据）。请简洁明了地描述图片内容。"
-        page_info = f"第 {img['page']} 页"
+        # 判断是否为拼接图（由 stitch_images 函数添加 count 字段）
+        if "count" in img:
+            prompt = f"这是 {img['count']} 张商业计划书图片的拼贴（按 2x2 网格排列）。请分别描述左上、右上、左下、右下的内容（如数据图表、商业模式图、产品原型或财务预测）。"
+            page_info = f"拼贴图 (第 {', '.join(map(str, img['pages']))} 页)"
+        else:
+            prompt = "这是一张商业计划书（BP）中的图片，请分析其中的关键信息（如数据图表趋势、商业模式图解、产品原型特征或财务预测数据）。请简洁明了地描述图片内容。"
+            page_info = f"第 {img['page']} 页"
         
         response = client.chat.completions.create(
             model=config.VISION_MODEL,
@@ -211,22 +217,26 @@ def describe_visual_elements(client, images: List[Dict]) -> str:
     """
     并发调用多模态模型对提取的图片进行理解和描述。
     优化策略：
-    1. 使用 ThreadPoolExecutor 并发执行（max_workers=10）
-    2. 不进行拼接，直接分析所有图片（最多 50 张）
+    1. 使用 2x2 拼图策略，将 4 张图拼成 1 张（减少 75% API 请求）
+    2. 使用 ThreadPoolExecutor 并发执行（max_workers=10）
     """
     if not images:
         return "未发现显著视觉元素。"
     
-    logger.info(f"检测到 {len(images)} 张有效图片，正在发起并发视觉分析（每批 10 个线程）...")
+    logger.info(f"检测到 {len(images)} 张有效图片，正在进行 2x2 拼图...")
     
-    # 并发分析所有图片
+    # 1. 拼接图片（4 张拼成 1 张）
+    stitched_images = stitch_images(images, grid_size=2)
+    logger.info(f"图片拼接完成：{len(images)} 张 → {len(stitched_images)} 张（减少 {len(images) - len(stitched_images)} 次请求）")
+    
+    # 2. 并发分析拼接后的图片
     visual_context = "### 🖼️ 商业计划书视觉元素分析\n"
     results = {}
     
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
             executor.submit(_analyze_single_image, client, img, i): i 
-            for i, img in enumerate(images)  # 直接分析所有图片
+            for i, img in enumerate(stitched_images)  # 分析拼接后的图片
         }
         
         for future in as_completed(futures):
@@ -294,6 +304,58 @@ def clean_json_string(text: str) -> str:
         return match.group(1).strip()
     
     return text.strip()
+
+
+def repair_json(json_str: str) -> str:
+    """
+    尝试修复截断或格式错误的 JSON 字符串。
+    
+    修复策略：
+    1. 尝试直接解析
+    2. 如果失败，尝试补全缺失的右大括号 } 或右中括号 ]
+    3. 如果仍然失败，返回空字典 {} 并记录错误日志
+    
+    参数:
+        json_str: 待修复的 JSON 字符串
+    
+    返回:
+        修复后的 JSON 字符串（如果无法修复则返回 "{}")
+    """
+    # 第一次尝试：直接解析
+    try:
+        json.loads(json_str)
+        return json_str
+    except json.JSONDecodeError as e:
+        logger.warning(f"JSON 解析失败，尝试自动修复: {e}")
+    
+    # 第二次尝试：补全缺失的括号
+    repaired = json_str.rstrip()
+    
+    # 统计括号数量
+    open_braces = repaired.count('{')
+    close_braces = repaired.count('}')
+    open_brackets = repaired.count('[')
+    close_brackets = repaired.count(']')
+    
+    # 补全缺失的右中括号
+    if open_brackets > close_brackets:
+        repaired += ']' * (open_brackets - close_brackets)
+        logger.info(f"补全了 {open_brackets - close_brackets} 个右中括号 ]")
+    
+    # 补全缺失的右大括号
+    if open_braces > close_braces:
+        repaired += '}' * (open_braces - close_braces)
+        logger.info(f"补全了 {open_braces - close_braces} 个右大括号 }}")
+    
+    # 再次尝试解析
+    try:
+        json.loads(repaired)
+        logger.info("JSON 修复成功")
+        return repaired
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON 修复失败，返回空字典: {e}")
+        logger.error(f"原始 JSON 片段: {json_str[:200]}...")
+        return "{}"
 
 
 def extract_funding_amounts(text: str) -> List[str]:
