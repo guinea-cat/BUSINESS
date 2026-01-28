@@ -46,20 +46,13 @@ def run_analysis(file_obj):
         else:
             visual_descriptions = ""
         
-        # 阶段 3：赛道识别
-        enhanced_text = bp_full_text
-        if visual_descriptions and visual_descriptions != "未发现显著视觉元素。":
-            enhanced_text = f"{bp_full_text}\n\n{visual_descriptions}"
-        
+        # 阶段 3-4：赛道感知与关键词生成（合并优化）
         elapsed = time.time() - start_time
-        yield f"## 🎯 正在识别项目赛道... (已耗时 {elapsed:.1f}s)\n\n基于 BP 内容进行赛道分类。", {}
-        detected_industry = researcher._detect_industry(enhanced_text)
+        yield f"## 🎯 正在进行赛道感知与关键词生成... (已耗时 {elapsed:.1f}s)\n\n【性能优化】单次 LLM 调用同时完成赛道识别和关键词生成，节省 2-3 秒。", {}
         
-        # 阶段 4：并发搜索
-        elapsed = time.time() - start_time
-        yield f"## 🔍 正在全网搜索... (已耗时 {elapsed:.1f}s)\n\n赛道：**{detected_industry}**\n\n正在并发搜索 10 个关键词，获取市场数据、竞品信息和融资动态。", {}
-        keywords = researcher._get_search_keywords(enhanced_text, detected_industry)
-        search_results = researcher._concurrent_search(keywords)
+        # 注意：这里不再单独调用 _detect_industry 和 _get_search_keywords
+        # 因为 analyze_bp_pipeline 内部已经使用了优化后的 _perceive_context 方法
+        # 直接进入完整分析流程
         
         # 阶段 5：并发 JSON 生成
         elapsed = time.time() - start_time

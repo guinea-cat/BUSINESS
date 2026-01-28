@@ -106,13 +106,13 @@ def extract_content_from_pdf(pdf_path: str) -> Dict[str, any]:
         return {"text": f"PDF 提取失败: {str(e)}", "images": []}
 
 
-def stitch_images(images: List[Dict], grid_size: int = 2) -> List[Dict]:
+def stitch_images(images: List[Dict], grid_size: int = 3) -> List[Dict]:
     """
-    将图片按网格拼接，减少 API 请求次数。
+    将图片按网格拼接,减少 API 请求次数。
     
     参数:
         images: 原始图片列表
-        grid_size: 网格大小（默认 2x2，即 4 张拼成 1 张）
+        grid_size: 网格大小（默认 3x3，即 9 张拼成 1 张）
     
     返回:
         拼接后的图片列表
@@ -182,7 +182,7 @@ def _analyze_single_image(client, img: Dict, index: int) -> tuple:
     try:
         # 判断是否为拼接图（由 stitch_images 函数添加 count 字段）
         if "count" in img:
-            prompt = f"这是 {img['count']} 张商业计划书图片的拼贴（按 2x2 网格排列）。请分别描述左上、右上、左下、右下的内容（如数据图表、商业模式图、产品原型或财务预测）。"
+            prompt = f"这是 {img['count']} 张商业计划书图片的拼贴（按 3x3 网格排列）。请从左到右、从上到下逐个描述每张图的核心内容（如数据图表、商业模式图、产品原型或财务预测）。"
             page_info = f"拼贴图 (第 {', '.join(map(str, img['pages']))} 页)"
         else:
             prompt = "这是一张商业计划书（BP）中的图片，请分析其中的关键信息（如数据图表趋势、商业模式图解、产品原型特征或财务预测数据）。请简洁明了地描述图片内容。"
@@ -217,16 +217,16 @@ def describe_visual_elements(client, images: List[Dict]) -> str:
     """
     并发调用多模态模型对提取的图片进行理解和描述。
     优化策略：
-    1. 使用 2x2 拼图策略，将 4 张图拼成 1 张（减少 75% API 请求）
+    1. 使用 3x3 拼图策略，将 9 张图拼成 1 张（减少 89% API 请求）
     2. 使用 ThreadPoolExecutor 并发执行（max_workers=10）
     """
     if not images:
         return "未发现显著视觉元素。"
     
-    logger.info(f"检测到 {len(images)} 张有效图片，正在进行 2x2 拼图...")
+    logger.info(f"检测到 {len(images)} 张有效图片，正在进行 3x3 拼图...")
     
-    # 1. 拼接图片（4 张拼成 1 张）
-    stitched_images = stitch_images(images, grid_size=2)
+    # 1. 拼接图片（9 张拼成 1 张）
+    stitched_images = stitch_images(images, grid_size=3)
     logger.info(f"图片拼接完成：{len(images)} 张 → {len(stitched_images)} 张（减少 {len(images) - len(stitched_images)} 次请求）")
     
     # 2. 并发分析拼接后的图片

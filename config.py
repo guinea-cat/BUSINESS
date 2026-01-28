@@ -14,24 +14,26 @@ load_dotenv()
 # ================================
 # 请在项目根目录创建 .env 文件并填入以下密钥：
 # SERPER_API_KEY=your_serper_api_key
-# LLM_API_KEY=your_deepseek_api_key
-# VISION_API_KEY=your_dashscope_api_key
+# DASHSCOPE_API_KEY=your_dashscope_api_key  # 统一使用阿里云 DashScope API Key
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
-LLM_API_KEY = os.getenv("LLM_API_KEY")
-VISION_API_KEY = os.getenv("VISION_API_KEY")
 
-# 原硬编码密钥（仅供参考，已失效）：
-# SERPER_API_KEY = "cc36a81dd202849cc452d564e80d9d86fa757af7"
-# LLM_API_KEY = "sk-b3c44f768fc4460a9d943a48c3030d93"
-# VISION_API_KEY = "sk-06dfae5645a247df90b1fb5c7d2bdcbe"
+# 统一 API Key：文本模型和视觉模型均使用阿里云 DashScope
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
 
-# 模型配置
-LLM_MODEL = "deepseek-chat"
-VISION_MODEL = "qwen-vl-plus"  # 切换为通义千问 VL Plus
-LLM_BASE_URL = "https://api.deepseek.com"
+# 为了保持代码兼容性，LLM_API_KEY 和 VISION_API_KEY 都指向 DASHSCOPE_API_KEY
+# 除非环境变量中显式指定了不同的 key（向后兼容逻辑）
+LLM_API_KEY = os.getenv("LLM_API_KEY", DASHSCOPE_API_KEY)
+VISION_API_KEY = os.getenv("VISION_API_KEY", DASHSCOPE_API_KEY)
 
-# 视觉模型专用配置 (阿里云百炼 DashScope OpenAI 兼容端点)
+
+
+# 模型配置（已统一迁移到阿里云 DashScope 平台）
+LLM_MODEL = "qwen-plus"  # Qwen2.5-Plus，速度快且逻辑能力强
+VISION_MODEL = "qwen-vl-plus"  # 通义千问 VL Plus，视觉理解能力强
+
+# 统一 Base URL：文本和视觉模型均使用阿里云 DashScope 的 OpenAI 兼容端点
+LLM_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 VISION_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 # 系统提示词 (System Prompt)
