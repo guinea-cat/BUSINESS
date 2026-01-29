@@ -1,175 +1,86 @@
-这是一个非常清晰且高质量的代码版本。你已经完成了**视觉并发**和**搜索并发**，这大大提升了前段的效率。
+# 🚀 SAGE 商业潜力 AI 评测系统
 
-针对你的疑问：“**为什么30张图的PDF还需要3分钟？能否进一步优化？**” 以及 “**图片合并处理**” 的建议，我来为你做深度复盘和优化方案。
-
----
-
-### 🟢 第一部分：当前系统详细工作流 (Current Workflow)
-
-根据你提供的代码，目前系统处理一个 PDF 的全流程如下：
-
-1.  **解析与清洗 (PDF Extraction)** `[utils.py]`
-    *   用户上传 PDF。
-    *   **文本**：提取全文。
-    *   **图片**：提取所有图片 -> 过滤(太小/长宽比异常) -> 缩放(Max 1024px) -> 压缩(JPEG Q75) -> **按文件体积排序** -> 取前 50 张。
-2.  **视觉并发分析 (Visual Analysis)** `[utils.py]`
-    *   **并行**：启动 `ThreadPoolExecutor(max_workers=10)`。
-    *   **请求**：同时对图片发起 Qwen-VL 请求（虽然你代码里写了 `stitch_images` 函数，但在 `describe_visual_elements` 中**并没有调用它**，目前是单张图独立并发分析）。
-    *   **耗时**：假设每张图耗时 3秒，30张图分3批处理，约耗时 **10-15秒**。
-3.  **信息融合与赛道识别 (Fusion & Detection)** `[agent.py]`
-    *   拼接 `文本 + 视觉描述`。
-    *   调用 LLM 识别赛道（耗时约 **3-5秒**）。
-4.  **关键词生成 (Keywords)** `[agent.py]`
-    *   调用 LLM 生成搜索关键词（耗时约 **3-5秒**）。
-5.  **并发联网搜索 (Concurrent Search)** `[agent.py]`
-    *   **并行**：启动 `ThreadPoolExecutor(max_workers=5)`。
-    *   同时搜索 10 个关键词。
-    *   **耗时**：取决于最慢的那次搜索，约 **3-5秒**。
-6.  **全量深度分析 (Final Synthesis)** `[agent.py]` **<-- 🚨 真正的瓶颈在这里**
-    *   **输入**：30000字文本 + 视觉描述 + 所有搜索结果 + 复杂的评分 System Prompt。
-    *   **输出**：生成一个包含 8 个大模块、评分模型、深度分析的巨型 JSON。
-    *   **耗时**：DeepSeek (或任何大模型) 生成 2000-3000 个 Token 的输出，通常需要 **60-120秒** 甚至更久，且无法并发（因为是流式生成的）。
+这是一款专为商业计划书（BP）设计的全自动深度分析系统。基于 **DeepSeek**（文本推理）与 **Qwen-VL**（视觉理解），结合 **Serper.dev** 实时联网搜索，为投资人及创业者提供 VC 级的深度研报生成能力。
 
 ---
 
-### 🔴 第二部分：为什么还是慢？(Bottleneck Analysis)
+## 🛠️ 核心工作流程
 
-1.  **图片处理 (Vision)**：目前约 15秒。虽然用了多线程，但 HTTP 请求建立连接和传输 base64 图片依然有开销。**你代码里的 `stitch_images` 没有被启用**。
-2.  **最终分析 (LLM Inference)**：目前约 90-120秒。
-    *   **原理**：LLM 是“一个字一个字”往外蹦的。你要它生成的 JSON 内容极多（包括项目画像、详细的评分、竞品分析、灵魂拷问）。
-    *   **现状**：所有的任务（打分、总结、画像）都塞在一个 Prompt 里让它一次性写完，它就必须串行生成。
+整个分析系统通过精心设计的并发流水线，实现了从原始文件到深度报告的闭环处理：
+
+1.  **PDF 解析与内容提取**：
+    *   利用 `PyMuPDF` (fitz) 高效解析 PDF。
+    *   **双路提取**：同步提取全文文本与高清图片，确保文字信息与视觉图表（如架构图、财务报表）均被捕获。
+2.  **图片智能预处理**：
+    *   **精准过滤**：自动剔除小于 5KB 的图标及异常长宽比（如页眉页脚线）的干扰图片。
+    *   **优化排序**：根据文件体积降序排列，优先分析信息量更大的复杂图表（上限 50 张）。
+    *   **规范化处理**：自动缩放（最大宽度 1024px）并压缩为 JPEG 格式，平衡分析质量与 API 传输效率。
+3.  **视觉并发分析 (Vision Logic)**：
+    *   **拼图策略**：支持 **2x2 或 3x3 拼图优化**，将多张 BP 图片合并为单张大图，大幅减少 API 请求次数，降低 70%+ 的视觉分析成本。
+    *   **并发理解**：使用 `ThreadPoolExecutor` 并发调用 Qwen-VL 模型，深度理解图表、趋势及产品原型。
+4.  **赛道识别与关键词生成**：
+    *   **复合推理**：单次 LLM 调用同时完成细分赛道识别与 10 个中英文精准关键词的提取，减少网络往返延迟。
+5.  **并发联网搜索**：
+    *   **多线程检索**：基于 Serper.dev 并发执行 10 组搜索任务，获取全球市场规模、政策动态、竞品情报及融资趋势。
+6.  **Map-Reduce 并发 JSON 生成**：
+    *   **任务拆分**：将庞大的分析任务拆分为 **多个并行子任务**（基础信息组、外部情报组、估值模型组、风险评估组）。
+    *   **结果合并**：多线程并行生成各模块 JSON 数据，最后自动汇总并执行 JSON 语法修复与字段补齐。
+7.  **最终报告合成与格式化**：
+    *   自动合成为结构清晰的 Markdown 研报，支持上标引用（如 `[S1]`）追溯原始搜索证据。
 
 ---
 
-### ⚡️ 第三部分：极速优化方案 (Turbo Optimization)
+## 🚀 运行指南
 
-要将 3 分钟压缩到 1 分钟以内，必须动两个刀子：
-1.  **图片处理**：启用拼图策略（减少 HTTP 请求）。
-2.  **最终分析**：**Map-Reduce 并发生成策略**（最关键的提速点）。
-
-#### 优化点 1：激活图片拼图 (Image Stitching)
-
-将 4 张图拼成 1 张大图发给 Qwen-VL，30 张图只需要请求 8 次。结合并发，可以在 **3-5秒** 内完成视觉分析。
-
-**修改 `utils.py` 中的 `describe_visual_elements` 函数：**
-
-```python
-def describe_visual_elements(client, images: List[Dict]) -> str:
-    if not images:
-        return "未发现显著视觉元素。"
-    
-    # 1. 启用拼图策略 (4张拼1张)
-    # 这会把 30 张图变成约 8 张拼接图
-    stitched_batches = stitch_images(images, grid_size=2)
-    
-    logger.info(f"原图 {len(images)} 张 -> 拼接后 {len(stitched_batches)} 张，开始并发分析...")
-    
-    visual_context = "### 🖼️ 商业计划书视觉元素分析\n"
-    results = {}
-    
-    # 2. 并发分析拼接后的图
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {
-            executor.submit(_analyze_single_image, client, img, i): i 
-            for i, img in enumerate(stitched_batches)
-        }
-        
-        for future in as_completed(futures):
-            index, _, description = future.result()
-            if description:
-                # 注意：因为是拼图，描述里会包含"左上、右上..."的信息
-                results[index] = description
-    
-    # 3. 组装结果
-    for i in sorted(results.keys()):
-        visual_context += f"**[视觉组 {i+1}]**: {results[i]}\n\n"
-        
-    return visual_context
+### 1. 环境准备
+确保系统已安装 Python 3.9+。执行以下命令安装核心依赖集：
+```bash
+pip install -r requirements.txt
 ```
 
-#### 优化点 2：Final LLM 并发拆解 (The Game Changer)
+### 2. 环境变量配置
+在项目根目录下新建 `.env` 文件，并配置以下密钥：
+```env
+# 阿里云 DashScope API Key (用于 Qwen-Plus 和 Qwen-VL-Plus)
+DASHSCOPE_API_KEY=你的阿里云密钥
 
-不要让 LLM 一口气写完所有 JSON。我们可以把任务拆成 **3 个并行的子任务**，同时让 LLM 写，最后合并 JSON。
-
-*   **Task A (基础层)**：生成 `project_identity` (项目画像), `industry_analysis` (赛道), `business_analysis` (商业模式)。
-*   **Task B (外部层)**：生成 `competitors` (竞品), `funding_ecosystem` (融资), `raw_evidence` (证据)。
-*   **Task C (深度层)**：生成 `valuation_model` (评分), `vc_grill` (拷问), `risk_assessment` (风险)。
-
-**逻辑推演：**
-*   **原流程**：生成 A(30s) -> 生成 B(30s) -> 生成 C(30s) = **总耗时 90s**。
-*   **新流程**：同时启动 A, B, C。总耗时 = **最慢的那个任务 (约 35s)**。
-
-**在 `agent.py` 中实现 Map-Reduce：**
-
-```python
-    def _call_llm_for_section(self, section_prompt: str, context: str) -> Dict:
-        """辅助函数：单独请求 LLM 生成 JSON 的一部分"""
-        full_prompt = f"{context}\n\n### 任务指令\n{section_prompt}"
-        try:
-            response = self.client.chat.completions.create(
-                model=config.LLM_MODEL,
-                messages=[
-                    {"role": "system", "content": config.SYSTEM_PROMPT}, # 保持人设
-                    {"role": "user", "content": full_prompt}
-                ],
-                temperature=0.5
-            )
-            return json.loads(utils.clean_json_string(response.choices[0].message.content))
-        except Exception as e:
-            logger.error(f"子任务失败: {e}")
-            return {}
-
-    def analyze_bp_pipeline(self, pdf_path: str) -> Dict:
-        # ... (前略：图片提取、拼图分析、搜索完成) ...
-        
-        # 6. LLM 深度分析 - 并发拆解版
-        logger.info("发起 LLM 并发深度分析 (Map-Reduce 模式)...")
-        
-        # 定义三个子任务的 Prompt 指令
-        task_a_prompt = "请仅分析并返回 JSON 中的以下字段：project_identity, industry_analysis, business_analysis, pain_point_validation。"
-        task_b_prompt = "请仅分析并返回 JSON 中的以下字段：competitors, funding_ecosystem, public_sentiment, raw_evidence。"
-        task_c_prompt = "请仅分析并返回 JSON 中的以下字段：valuation_model (含评分), vc_grill, risk_assessment。"
-        
-        final_json = {}
-        
-        # 使用线程池并发请求 LLM
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            future_a = executor.submit(self._call_llm_for_section, task_a_prompt, fusion_context)
-            future_b = executor.submit(self._call_llm_for_section, task_b_prompt, fusion_context)
-            future_c = executor.submit(self._call_llm_for_section, task_c_prompt, fusion_context)
-            
-            # 等待所有结果并合并
-            part_a = future_a.result()
-            part_b = future_b.result()
-            part_c = future_c.result()
-            
-            # 合并字典
-            final_json.update(part_a)
-            final_json.update(part_b)
-            final_json.update(part_c)
-
-        # 7. 完整性校验与兜底 (代码不变)
-        # ...
-        return final_json
+# Serper.dev API Key (用于 Google 搜索)
+SERPER_API_KEY=你的Serper密钥
 ```
+
+### 3. 阿里云 DashScope 接入
+本项目已适配阿里云 DashScope 的 OpenAI 兼容端点：
+*   **文本模型**：默认使用 `qwen-plus`（逻辑推理能力强）。
+*   **视觉模型**：默认使用 `qwen-vl-plus`（视觉理解精度高）。
+*   **端点地址**：`https://dashscope.aliyuncs.com/compatible-mode/v1`
+
+### 4. 代码结构说明
+*   `app.py`: Gradio Web 界面入口，负责 UI 交互与实时进度展示。
+*   `agent.py`: 核心大脑，实现 `BusinessResearcher` 类及多线程分析流水线。
+*   `utils.py`: 工具箱，包含 PDF/图片处理、JSON 修复、搜索封装等底层逻辑。
+*   `config.py`: 集中管理 API 密钥、模型参数及系统级 Prompts。
+
+### 5. 启动与使用
+执行启动命令：
+```bash
+python app.py
+```
+程序启动后，通过浏览器访问 `http://localhost:8081`。上传 PDF 文件，点击“开始全自动分析”，约 45-60 秒后即可获得完整研报。
+
+终止程序运行可用:
+```bash
+taskkill /IM python.exe /F
+```
+---
+
+## ✨ 性能优化特性
+*   **极速分析**：通过 4 路并发 Map-Reduce 与并发搜索，将原本繁琐的串行流程大幅压缩。
+*   **视觉成本优化**：拼图策略显著降低了多模态模型的 Token 消耗和调用频率。
+*   **鲁棒性机制**：内置自动 JSON 修复器（Repairer），能处理 LLM 偶发的截断或格式异常，确保流程不中断。
+*   **增强文本融合**：将视觉描述插入文本上下文，使 AI 能够“看图说话”，识别出纯文本无法解析的财务曲线或架构细节。
 
 ---
 
-### 🚀 总结建议
-
-如果你现在把代码改成上述 **"图片拼图 + LLM Map-Reduce"** 模式：
-
-1.  **图片环节**：从 15s 降至 **4s**。
-2.  **LLM 环节**：从 90s 降至 **35s**。
-3.  **总耗时**：预计从 3 分钟压缩至 **50-60 秒**。
-
-**给 Qoder 的提示词建议：**
-
-> “请对 `utils.py` 中的 `describe_visual_elements` 函数进行修改，正式启用 `stitch_images` 函数进行 2x2 拼图，然后进行并发分析。
->
-> 接着，请重构 `agent.py` 中的 `analyze_bp_pipeline` 方法。在最后生成 JSON 报告的阶段，不要一次性生成所有字段。请使用 `ThreadPoolExecutor` 将 JSON 生成任务拆分为 3 个并发子任务：
-> 1. 基础信息组 (Identity, Industry, Business Model)
-> 2. 外部情报组 (Competitors, Funding, Sentiment, Evidence)
-> 3. 深度评估组 (Valuation, VC Grill, Risks)
->
-> 最后将 3 个子任务返回的 JSON 字典合并。这将大幅缩短长文本生成的等待时间。”
+> **⚠️ 注意事项**：
+> - 请确保您的阿里云账户已开通模型服务权限并有足够余额。
+> - Serper.dev 提供免费额度（约 2500 次搜索），建议根据需求合理使用。
