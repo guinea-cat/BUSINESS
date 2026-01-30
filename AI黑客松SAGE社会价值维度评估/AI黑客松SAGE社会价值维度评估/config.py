@@ -27,18 +27,17 @@ if GITHUB_TOKEN and GITHUB_TOKEN not in GITHUB_TOKENS:
 CACHE_DIR = BASE_DIR / os.getenv("CACHE_DIR", "./cache")
 CACHE_TTL = int(os.getenv("CACHE_TTL", 86400))  # 默认24小时
 
-# 默认权重配置（社会价值评估框架）
-# 基础项（伦理安全合规性）+ 加分项（价值亮点）
+# 默认权重配置（社会价值评估框架 - AI黑客松专用 20/80 体系）
 DEFAULT_WEIGHTS = {
-    # === 基础项 伦理安全合规性 30% ===
-    "ethics_redline": 10,          # 伦理红线检查
-    "privacy_protection": 10,       # 隐私与数据保护
-    "algorithm_fairness": 10,       # 算法公平性意识
-    # === 加分项 价值亮点 70% ===
-    "social_impact": 25,            # 社会影响深度
-    "environmental_friendliness": 15,  # 环境可持续性
-    "charity_orientation": 15,      # 公益普惠导向
-    "long_term_vision": 15,         # 长期愿景与变革潜力
+    # === 基础项 (底线检查) 20分 ===
+    "basic_ethics": 20,             # 伦理安全合规性基础分
+
+    # === 核心亮点项 (深度评估) 80分 ===
+    # 实际评估时会从以下四个维度中选择最突出的1个，该维度权重占亮点项的100%
+    "social_impact": 80,            # 社会影响深度
+    "environmental_friendliness": 80,  # 环境可持续性
+    "charity_orientation": 80,      # 公益普惠导向
+    "long_term_vision": 80,         # 长期愿景与变革潜力
 }
 
 # 社会价值等级划分

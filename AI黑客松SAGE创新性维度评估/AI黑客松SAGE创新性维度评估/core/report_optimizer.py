@@ -81,12 +81,16 @@ class ReportOptimizer:
             print(f"Warning: Failed to init OpenAI client: {e}")
             self.client = None
     
-    def optimize_report(self, report_data: Dict[str, Any], prompt_data: Optional[Dict[str, Any]] = None, timeout: int = 300) -> Optional[str]:
+    def optimize_report(self, report_data: Dict[str, Any], prompt_data: Optional[Dict[str, Any]] = None, 
+                        system_prompt: Optional[str] = None, user_prompt: Optional[str] = None,
+                        timeout: int = 300) -> Optional[str]:
         """优化报告输出
         
         Args:
             report_data: 评估报告的结构化数据
             prompt_data: 提示词数据，包含预构建的提示词内容
+            system_prompt: 可选的系统提示词（由PromptEngineeringLibrary生成）
+            user_prompt: 可选的用户提示词（由PromptEngineeringLibrary生成）
             timeout: 超时时间（秒）
             
         Returns:
@@ -95,16 +99,17 @@ class ReportOptimizer:
         if not self.client:
             return None
         
-        # 构建提示词
-        prompt = self._build_prompt(report_data, prompt_data)
+        # 优先使用传入的提示词，否则构建默认提示词
+        final_system_prompt = system_prompt or self.SYSTEM_PROMPT
+        final_user_prompt = user_prompt or self._build_prompt(report_data, prompt_data)
         
         try:
             # 深度思考模式：使用更低的温度，让模型更加理性和深入
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}
+                    {"role": "system", "content": final_system_prompt},
+                    {"role": "user", "content": final_user_prompt}
                 ],
                 temperature=0.3,  # 降低温度，提高思考深度和一致性
                 max_tokens=16384,

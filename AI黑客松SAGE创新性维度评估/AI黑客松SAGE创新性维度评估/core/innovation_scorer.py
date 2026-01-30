@@ -97,6 +97,10 @@ class InnovationReport:
     # 研究辅助数据
     research_links: Dict[str, str] = field(default_factory=dict)
     community_health: Dict[str, Any] = field(default_factory=dict)
+    
+    # 新增：社会价值审计报告
+    social_value_report: str = ""
+
 
 
 class InnovationScorer:
@@ -673,7 +677,8 @@ class InnovationScorer:
         
         # Step 1: 获取仓库信息
         update_progress(0.1, "正在获取GitHub仓库信息...")
-        repo_info = self.github_fetcher.fetch(repo_url)
+        # 禁用缓存以确保使用最新的仓库数据
+        repo_info = self.github_fetcher.fetch(repo_url, use_cache=False)
         
         # Step 2: 基础分析
         update_progress(0.2, "正在分析技术选型...")
@@ -712,6 +717,27 @@ class InnovationScorer:
         # Step 4: 市场契合度评估
         update_progress(0.8, "正在评估市场契合度...")
         market_eval = self._evaluate_market_fit(repo_info, tech_result, solution_result)
+        
+        # 新增：社会价值深度审计
+        social_value_report = ""
+        if self.use_deepseek and self.report_optimizer:
+            try:
+                update_progress(0.85, "正在进行社会价值专家审计...")
+                social_prompts = self.prompt_library.generate_prompt(
+                    "social_value_analyzer", 
+                    repo_name=repo_info.name,
+                    description=repo_info.description,
+                    detected_scenarios=str(list(scenario_eval.get("detected_scenarios", {}).keys()))
+                )
+                social_value_report = self.report_optimizer.optimize_report(
+                    {}, 
+                    system_prompt=social_prompts["system_prompt"],
+                    user_prompt=social_prompts["user_prompt"],
+                    timeout=120
+                )
+            except Exception as e:
+                print(f"Social value audit failed: {e}")
+
         
         # Step 5: 计算6个子维度得分
         update_progress(0.9, "正在生成评估报告...")
@@ -777,6 +803,10 @@ class InnovationScorer:
         
         # 计算总分和板块分
         total_score = sum(d.weighted_score for d in dimension_scores)
+        
+        # 优化：确保分数不低于总分的30%（即最低30分），以符合评估温和性要求
+        total_score = max(30.0, total_score)
+        
         tech_innovation_score = sum(d.weighted_score for d in dimension_scores if d.category == "tech")
         scenario_innovation_score = sum(d.weighted_score for d in dimension_scores if d.category == "scenario")
         
@@ -866,6 +896,7 @@ class InnovationScorer:
                 "contributors": getattr(repo_info, 'contributors_count', 0),
                 "issues": getattr(repo_info, 'open_issues_count', 0),
             },
+            social_value_report=social_value_report
         )
     
     def generate_markdown_report(self, report: InnovationReport, use_llm: bool = None) -> str:
@@ -878,6 +909,10 @@ class InnovationScorer:
         Returns:
             Markdown格式的报告
         """
+        # 重新加载提示词库以确保使用最新的提示词
+        from .prompt_engineering import get_prompt_library
+        self.prompt_library = get_prompt_library()
+        
         # 是否使用LLM优化
         should_use_llm = use_llm if use_llm is not None else self.use_deepseek
         
@@ -971,7 +1006,16 @@ class InnovationScorer:
                     "project_depth_data": project_depth_data
                 }
                 
-                optimized = self.report_optimizer.optimize_report(report_data, prompt_data=prompt_data, timeout=300)
+                # 优化：使用提示词工程库生成提示词，确保应用真人专家工作流与反幻觉约束
+                prompts = self.prompt_library.generate_prompt("innovation_report_optimizer", **prompt_data)
+                
+                optimized = self.report_optimizer.optimize_report(
+                    report_data, 
+                    prompt_data=prompt_data, 
+                    system_prompt=prompts["system_prompt"],
+                    user_prompt=prompts["user_prompt"],
+                    timeout=300
+                )
                 if optimized:
                     # 评估报告质量
                     quality_result = self.quality_evaluator.evaluate(optimized)
@@ -979,7 +1023,13 @@ class InnovationScorer:
                     
                     # 添加页脚和质量评估
                     footer = f"\n\n---\n\n*报告生成时间: {report.analysis_time:.1f}秒 | SAGE AI创新性评估系统 v4.0（提示词工程优化版）*"
-                    return optimized + footer + "\n\n" + quality_report
+                    
+                    # 组合最终报告
+                    final_md = optimized
+                    if report.social_value_report:
+                        final_md += "\n\n---\n\n## 🌍 社会价值专项审计报告\n\n" + report.social_value_report
+                        
+                    return final_md + footer + "\n\n" + quality_report
             except Exception as e:
                 print(f"LLM optimization failed, fallback to template: {e}")
         

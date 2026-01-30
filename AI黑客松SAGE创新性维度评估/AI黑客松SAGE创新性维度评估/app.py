@@ -21,11 +21,8 @@ from core.innovation_scorer import InnovationScorer
 scorer = None
 
 def get_scorer(use_deepseek: bool = True):
-    """获取或创建评分器实例"""
-    global scorer
-    if scorer is None:
-        scorer = InnovationScorer(use_modelscope=False, use_deepseek=use_deepseek)
-    return scorer
+    """获取评分器实例（每次都创建新实例以确保使用最新的提示词库）"""
+    return InnovationScorer(use_modelscope=False, use_deepseek=use_deepseek)
 
 
 def analyze_repo(url: str, 

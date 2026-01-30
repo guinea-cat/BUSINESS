@@ -32,9 +32,7 @@ def analyze_repo(url: str,
                  demo_url: str,
                  blog_url: str,
                  paper_url: str,
-                 weight_ethics_redline: float,
-                 weight_privacy_protection: float,
-                 weight_algorithm_fairness: float,
+                 weight_basic_ethics: float,
                  weight_social_impact: float,
                  weight_environmental_friendliness: float,
                  weight_charity_orientation: float,
@@ -42,24 +40,7 @@ def analyze_repo(url: str,
                  use_deepseek: bool,
                  progress=gr.Progress()):
     """
-    分析仓库社会价值（AI黑客松版本）
-    
-    Args:
-        url: GitHub仓库URL
-        demo_url: Demo/官网链接
-        blog_url: 技术博客链接
-        paper_url: 论文链接
-        weight_ethics_redline: 伦理红线检查权重
-        weight_privacy_protection: 隐私与数据保护权重
-        weight_algorithm_fairness: 算法公平性意识权重
-        weight_social_impact: 社会影响深度权重
-        weight_environmental_friendliness: 环境可持续性权重
-        weight_charity_orientation: 公益普惠导向权重
-        weight_long_term_vision: 长期愿景与变革潜力权重
-        progress: Gradio进度对象
-        
-    Returns:
-        (总分文本, 等级文本, 一句话结论, Markdown报告)
+    分析仓库社会价值（AI黑客松版本 20/80 体系）
     """
     # 验证URL
     if not url or not url.strip():
@@ -69,11 +50,9 @@ def analyze_repo(url: str,
     if "github.com" not in url.lower():
         return "❌ 请输入有效的GitHub仓库URL", "", "", ""
     
-    # 构建权重字典（新版7维度）
+    # 构建权重字典
     weights = {
-        "ethics_redline": weight_ethics_redline,
-        "privacy_protection": weight_privacy_protection,
-        "algorithm_fairness": weight_algorithm_fairness,
+        "basic_ethics": weight_basic_ethics,
         "social_impact": weight_social_impact,
         "environmental_friendliness": weight_environmental_friendliness,
         "charity_orientation": weight_charity_orientation,
@@ -117,11 +96,9 @@ def analyze_repo(url: str,
 
 
 def reset_weights():
-    """重置权重为默认值（社会价值评估7维度框架）"""
+    """重置权重为默认值（社会价值评估 20/80 体系）"""
     return (
-        DEFAULT_WEIGHTS["ethics_redline"],
-        DEFAULT_WEIGHTS["privacy_protection"],
-        DEFAULT_WEIGHTS["algorithm_fairness"],
+        DEFAULT_WEIGHTS["basic_ethics"],
         DEFAULT_WEIGHTS["social_impact"],
         DEFAULT_WEIGHTS["environmental_friendliness"],
         DEFAULT_WEIGHTS["charity_orientation"],
@@ -200,50 +177,40 @@ def create_app():
                 # 权重配置（可折叠）
                 with gr.Accordion("⚙️ 权重配置", open=False):
                     gr.Markdown("""
-                    调整各维度在总分中的权重占比（总和自动归一化为100%）
+                    根据 AI 黑客松评分标准调整权重占比
                     
-                    **基础项（默认30%）**：伦理红线检查10% + 隐私与数据保护10% + 算法公平性意识10%
+                    **基础项（20分）**：伦理、隐私与公平性底线检查
                     
-                    **加分项（默认70%）**：社会影响深度25% + 环境可持续性15% + 公益普惠导向15% + 长期愿景与变革潜力15%
+                    **核心亮点项（80分）**：从四个维度中选择最突出的一个进行深度评估
                     """)
                     
-                    gr.Markdown("##### 基础项：伦理安全合规性")
-                    weight_ethics_redline = gr.Slider(
-                        minimum=0, maximum=100, value=DEFAULT_WEIGHTS["ethics_redline"],
-                        step=1, label="伦理红线检查",
-                        info="评估项目是否触及公认的AI伦理红线"
-                    )
-                    weight_privacy_protection = gr.Slider(
-                        minimum=0, maximum=100, value=DEFAULT_WEIGHTS["privacy_protection"],
-                        step=1, label="隐私与数据保护",
-                        info="评估对用户隐私和数据权利的基本尊重"
-                    )
-                    weight_algorithm_fairness = gr.Slider(
-                        minimum=0, maximum=100, value=DEFAULT_WEIGHTS["algorithm_fairness"],
-                        step=1, label="算法公平性意识",
-                        info="评估是否考虑了算法可能产生的不公平后果"
+                    gr.Markdown("##### 基础项评估权重")
+                    weight_basic_ethics = gr.Slider(
+                        minimum=0, maximum=20, value=DEFAULT_WEIGHTS["basic_ethics"],
+                        step=1, label="基础项总分（底线检查）",
+                        info="无问题得20分，发现风险按严重程度扣分"
                     )
                     
-                    gr.Markdown("##### 加分项：社会价值亮点")
+                    gr.Markdown("##### 核心亮点项评估权重")
                     weight_social_impact = gr.Slider(
-                        minimum=0, maximum=100, value=DEFAULT_WEIGHTS["social_impact"],
-                        step=1, label="社会影响深度 ⭐",
-                        info="【重点】评估项目对社会问题的解决程度和受益群体范围"
+                        minimum=0, maximum=80, value=DEFAULT_WEIGHTS["social_impact"],
+                        step=1, label="A. 社会影响深度",
+                        info="解决具体社会问题、服务特定群体"
                     )
                     weight_environmental_friendliness = gr.Slider(
-                        minimum=0, maximum=100, value=DEFAULT_WEIGHTS["environmental_friendliness"],
-                        step=1, label="环境可持续性",
-                        info="评估项目的环境友好程度和可持续发展理念"
+                        minimum=0, maximum=80, value=DEFAULT_WEIGHTS["environmental_friendliness"],
+                        step=1, label="B. 环境可持续性",
+                        info="环保、节能、低碳、绿色设计"
                     )
                     weight_charity_orientation = gr.Slider(
-                        minimum=0, maximum=100, value=DEFAULT_WEIGHTS["charity_orientation"],
-                        step=1, label="公益普惠导向",
-                        info="评估项目的公益性质和普惠性设计"
+                        minimum=0, maximum=80, value=DEFAULT_WEIGHTS["charity_orientation"],
+                        step=1, label="C. 公益普惠导向",
+                        info="普惠性、可及性、包容性、公益优先"
                     )
                     weight_long_term_vision = gr.Slider(
-                        minimum=0, maximum=100, value=DEFAULT_WEIGHTS["long_term_vision"],
-                        step=1, label="长期愿景与变革潜力",
-                        info="评估项目的长期发展愿景和系统变革潜力"
+                        minimum=0, maximum=80, value=DEFAULT_WEIGHTS["long_term_vision"],
+                        step=1, label="D. 长期愿景与变革潜力",
+                        info="愿景清晰度、系统性变革潜力、实施路径"
                     )
                     
                     reset_btn = gr.Button("🔄 重置为默认权重", size="sm")
@@ -303,46 +270,41 @@ def create_app():
         # 使用说明
         with gr.Accordion("📖 使用说明", open=False):
             gr.Markdown("""
-            ### 评估维度说明（基础项+加分项架构）
+            ### 评估维度说明（20/80 评分体系）
             
-            #### 基础项：伦理安全合规性（默认30%）
-            | 维度 | 权重 | 评分依据 |
-            |------|------|----------|
-            | 伦理红线检查 | 10% | 项目是否触及公认的AI伦理红线 |
-            | 隐私与数据保护 | 10% | 对用户隐私和数据权利的基本尊重 |
-            | 算法公平性意识 | 10% | 是否考虑了算法可能产生的不公平后果 |
+            #### 一、 基础项评估（20分，底线检查）
+            基础项仅检查是否存在问题，符合要求得满分20分。
+            - **伦理红线检查**：是否触及公认伦理红线（触及即本维度不及格）
+            - **隐私与数据保护**：是否有明显隐私风险（扣3-10分）
+            - **算法公平性**：是否有明显不公平设计（扣3-10分）
             
-            #### 加分项：社会价值亮点（默认70%）
-            | 维度 | 权重 | 评分依据 |
-            |------|------|----------|
-            | 社会影响深度 | 25% | 问题解决程度、受益群体范围、影响可扩展性 |
-            | 环境可持续性 | 15% | 直接环境效益、绿色设计理念、意识提升作用 |
-            | 公益普惠导向 | 15% | 普惠性设计、公益优先性、包容性考量 |
-            | 长期愿景与变革潜力 | 15% | 愿景清晰度与合理性、系统性变革潜力、实施路径可行性 |
+            #### 二、 核心亮点项评估（80分）
+            系统将自动从以下四个维度中，根据项目特点选择**最突出的1个**进行深度评估：
+            - **A. 社会影响深度**：解决具体社会问题、服务特定群体
+            - **B. 环境可持续性**：环保、节能、可持续发展
+            - **C. 公益普惠导向**：普惠性、可及性、非营利性
+            - **D. 长期愿景与变革潜力**：系统性变革、先进价值取向
             
-            ### 社会价值等级
-            
+            ### 总分与等级
             | 分数范围 | 等级 | 说明 |
             |---------|------|------|
-            | 90-100 | 卓越社会价值 ⭐⭐⭐⭐⭐ | 在多个维度展现出卓越的社会价值 |
-            | 75-89 | 显著社会价值 ⭐⭐⭐⭐ | 有明确的社会价值亮点和贡献 |
-            | 60-74 | 良好社会价值 ⭐⭐⭐ | 有一定社会价值，但仍有提升空间 |
-            | 40-59 | 一般社会价值 ⭐⭐ | 社会价值有限，需要进一步发展 |
-            | <40 | 社会价值有限 ⭐ | 社会价值不明显，需要重新定位 |
+            | 90-100 | 卓越 | 社会价值显著，亮点突出 |
+            | 80-89 | 优秀 | 社会价值明确，表现良好 |
+            | 70-79 | 良好 | 有一定社会价值 |
+            | 60-69 | 合格 | 基本符合要求 |
+            | <60 | 待改进 | 社会价值不足 |
             
-            ### 注意事项
-            
-            - 本工具仅供参考，评估结果应结合人工判断使用
-            - **社会影响深度**是重点评估维度，聚焦于应用的实际社会价值
-            - 支持公开的GitHub仓库，私有仓库需提供访问Token
-            - 评估时间取决于仓库大小，通常需要30秒-2分钟
+            ### 评估流程
+            1. **基础项检查**：底线合规性分析
+            2. **识别核心维度**：匹配项目最突出的社会贡献点
+            3. **深度专家评审**：模拟真人评审，输出具行业洞察力的详尽报告
             """)
         
         # 事件绑定
         analyze_btn.click(
             fn=analyze_repo,
             inputs=[url_input, demo_url, blog_url, paper_url, 
-                    weight_ethics_redline, weight_privacy_protection, weight_algorithm_fairness,
+                    weight_basic_ethics,
                     weight_social_impact, weight_environmental_friendliness, weight_charity_orientation, weight_long_term_vision,
                     use_deepseek],
             outputs=[score_output, level_output, summary_output, report_output],
@@ -351,7 +313,7 @@ def create_app():
         
         reset_btn.click(
             fn=reset_weights,
-            outputs=[weight_ethics_redline, weight_privacy_protection, weight_algorithm_fairness,
+            outputs=[weight_basic_ethics, 
                      weight_social_impact, weight_environmental_friendliness, weight_charity_orientation, weight_long_term_vision],
         )
         
@@ -359,7 +321,7 @@ def create_app():
         url_input.submit(
             fn=analyze_repo,
             inputs=[url_input, demo_url, blog_url, paper_url,
-                    weight_ethics_redline, weight_privacy_protection, weight_algorithm_fairness,
+                    weight_basic_ethics,
                     weight_social_impact, weight_environmental_friendliness, weight_charity_orientation, weight_long_term_vision,
                     use_deepseek],
             outputs=[score_output, level_output, summary_output, report_output],

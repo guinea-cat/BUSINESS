@@ -605,12 +605,9 @@ class SocialValueScorer:
     def analyze(self, repo_url: str, weights: Dict[str, float] = None,
                progress_callback=None) -> SocialValueReport:
         """
-        分析仓库社会价值
+        分析仓库社会价值 (遵循 20/80 评分体系)
         """
         start_time = time.time()
-        
-        weights = weights or DEFAULT_WEIGHTS.copy()
-        weights = self._normalize_weights(weights)
         
         def update_progress(progress: float, message: str):
             if progress_callback:
@@ -620,26 +617,151 @@ class SocialValueScorer:
         update_progress(0.1, "正在获取GitHub仓库信息...")
         repo_info = self.github_fetcher.fetch(repo_url)
         
-        # Step 2: 基础项评估
-        update_progress(0.2, "正在评估伦理安全合规性...")
+        # Step 2: 基础项评估 (20分，底线检查)
+        update_progress(0.2, "正在进行基础项底线检查...")
         ethics_eval = self._evaluate_ethics_redline(repo_info)
         privacy_eval = self._evaluate_privacy_protection(repo_info)
         fairness_eval = self._evaluate_algorithm_fairness(repo_info)
         
-        # Step 3: 加分项评估
-        update_progress(0.4, "正在评估社会影响深度...")
+        # 基础项评分逻辑：起始20分，按发现的问题扣分
+        basic_score = 20.0
+        
+        # 伦理红线扣分
+        if ethics_eval["risk_level"] == "危险":
+            basic_score = 0.0  # 触及红线直接不及格
+            ethics_eval["analysis"] = "【严重扣分】触及伦理红线，社会价值维度直接不及格。" + ethics_eval["analysis"]
+        elif ethics_eval["risk_level"] == "需关注":
+            basic_score -= 10.0
+            ethics_eval["analysis"] = "【扣10分】存在潜在伦理风险。" + ethics_eval["analysis"]
+
+        # 隐私风险扣分 (3-10分)
+        if privacy_eval["compliance_level"] == "不符合":
+            basic_score -= 10.0
+            privacy_eval["analysis"] = "【扣10分】存在明显隐私风险。" + privacy_eval["analysis"]
+        elif privacy_eval["compliance_level"] == "基本符合":
+            basic_score -= 5.0
+            privacy_eval["analysis"] = "【扣5分】隐私保护措施有待加强。" + privacy_eval["analysis"]
+
+        # 公平性扣分 (3-10分)
+        if fairness_eval["awareness_level"] == "缺乏考虑":
+            basic_score -= 10.0
+            fairness_eval["analysis"] = "【扣10分】算法公平性设计缺失。" + fairness_eval["analysis"]
+        elif fairness_eval["awareness_level"] == "基本意识":
+            basic_score -= 5.0
+            fairness_eval["analysis"] = "【扣5分】公平性考虑不足。" + fairness_eval["analysis"]
+
+        basic_score = max(0.0, basic_score)
+        
+        # Step 3: 加分项评估 (80分，核心亮点)
+        update_progress(0.4, "正在识别核心亮点维度...")
         social_impact_eval = self._evaluate_social_impact(repo_info)
-        
-        update_progress(0.55, "正在评估环境可持续性...")
         environmental_eval = self._evaluate_environmental_friendliness(repo_info)
-        
-        update_progress(0.7, "正在评估公益普惠导向...")
         charity_eval = self._evaluate_charity_orientation(repo_info)
-        
-        update_progress(0.85, "正在评估长期愿景...")
         vision_eval = self._evaluate_long_term_vision(repo_info)
         
         # 汇总评估结果
+        bonus_evals = {
+            "social_impact": social_impact_eval,
+            "environmental_friendliness": environmental_eval,
+            "charity_orientation": charity_eval,
+            "long_term_vision": vision_eval,
+        }
+        
+        # 选择得分最高的作为核心维度
+        core_dim_key = max(bonus_evals, key=lambda k: bonus_evals[k]["score"])
+        core_eval = bonus_evals[core_dim_key]
+        
+        # 计算亮点项得分：子维度原始分(0-100)映射到(0-80)
+        # 这里为了简化，直接将100分制得分映射到80分总分
+        bonus_items_score = (core_eval["score"] / 100.0) * 80.0
+        
+        # Step 4: 汇总所有维度得分用于展示
+        update_progress(0.9, "正在汇总维度评分...")
+        
+        dimension_scores = [
+            # 基础项汇总 (为了展示方便，我们仍保留子维度，但总分由basic_score决定)
+            DimensionScore(
+                name="ethics_redline",
+                name_cn="伦理红线检查",
+                score=ethics_eval["score"],
+                weight=100.0, # 基础项内部不设权重，整体评估
+                weighted_score=basic_score if core_dim_key == "ethics_redline" else 0, # 这里逻辑稍微特殊
+                details=ethics_eval["analysis"],
+                category="basic",
+            ),
+            DimensionScore(
+                name="privacy_protection",
+                name_cn="隐私与数据保护",
+                score=privacy_eval["score"],
+                weight=100.0,
+                weighted_score=0,
+                details=privacy_eval["analysis"],
+                category="basic",
+            ),
+            DimensionScore(
+                name="algorithm_fairness",
+                name_cn="算法公平性意识",
+                score=fairness_eval["score"],
+                weight=100.0,
+                weighted_score=0,
+                details=fairness_eval["analysis"],
+                category="basic",
+            ),
+            # 亮点项
+            DimensionScore(
+                name="social_impact",
+                name_cn="社会影响深度",
+                score=social_impact_eval["score"],
+                weight=80.0 if core_dim_key == "social_impact" else 0,
+                weighted_score=bonus_items_score if core_dim_key == "social_impact" else 0,
+                details=social_impact_eval["analysis"],
+                category="bonus",
+            ),
+            DimensionScore(
+                name="environmental_friendliness",
+                name_cn="环境可持续性",
+                score=environmental_eval["score"],
+                weight=80.0 if core_dim_key == "environmental_friendliness" else 0,
+                weighted_score=bonus_items_score if core_dim_key == "environmental_friendliness" else 0,
+                details=environmental_eval["analysis"],
+                category="bonus",
+            ),
+            DimensionScore(
+                name="charity_orientation",
+                name_cn="公益普惠导向",
+                score=charity_eval["score"],
+                weight=80.0 if core_dim_key == "charity_orientation" else 0,
+                weighted_score=bonus_items_score if core_dim_key == "charity_orientation" else 0,
+                details=charity_eval["analysis"],
+                category="bonus",
+            ),
+            DimensionScore(
+                name="long_term_vision",
+                name_cn="长期愿景与变革潜力",
+                score=vision_eval["score"],
+                weight=80.0 if core_dim_key == "long_term_vision" else 0,
+                weighted_score=bonus_items_score if core_dim_key == "long_term_vision" else 0,
+                details=vision_eval["analysis"],
+                category="bonus",
+            ),
+        ]
+        
+        # 计算总分
+        total_score = basic_score + bonus_items_score
+        level, stars = self._get_level(total_score)
+        
+        # 详细维度分析映射
+        dimension_analyses = {
+            "ethics_redline": ethics_eval["analysis"],
+            "privacy_protection": privacy_eval["analysis"],
+            "algorithm_fairness": fairness_eval["analysis"],
+            "social_impact": social_impact_eval["analysis"],
+            "environmental_friendliness": environmental_eval["analysis"],
+            "charity_orientation": charity_eval["analysis"],
+            "long_term_vision": vision_eval["analysis"],
+        }
+        
+        # 生成其他辅助信息
         evaluations = {
             "ethics_redline": ethics_eval,
             "privacy_protection": privacy_eval,
@@ -650,117 +772,24 @@ class SocialValueScorer:
             "long_term_vision": vision_eval,
         }
         
-        # Step 4: 计算7个子维度得分
-        update_progress(0.9, "正在生成评估报告...")
-        
-        dimension_scores = [
-            # 基础项（30%）
-            DimensionScore(
-                name="ethics_redline",
-                name_cn="伦理红线检查",
-                score=ethics_eval["score"],
-                weight=weights.get("ethics_redline", 10),
-                weighted_score=ethics_eval["score"] * weights.get("ethics_redline", 10) / 100,
-                details=ethics_eval["analysis"],
-                category="basic",
-            ),
-            DimensionScore(
-                name="privacy_protection",
-                name_cn="隐私与数据保护",
-                score=privacy_eval["score"],
-                weight=weights.get("privacy_protection", 10),
-                weighted_score=privacy_eval["score"] * weights.get("privacy_protection", 10) / 100,
-                details=privacy_eval["analysis"],
-                category="basic",
-            ),
-            DimensionScore(
-                name="algorithm_fairness",
-                name_cn="算法公平性意识",
-                score=fairness_eval["score"],
-                weight=weights.get("algorithm_fairness", 10),
-                weighted_score=fairness_eval["score"] * weights.get("algorithm_fairness", 10) / 100,
-                details=fairness_eval["analysis"],
-                category="basic",
-            ),
-            # 加分项（70%）
-            DimensionScore(
-                name="social_impact",
-                name_cn="社会影响深度",
-                score=social_impact_eval["score"],
-                weight=weights.get("social_impact", 25),
-                weighted_score=social_impact_eval["score"] * weights.get("social_impact", 25) / 100,
-                details=social_impact_eval["analysis"],
-                category="bonus",
-            ),
-            DimensionScore(
-                name="environmental_friendliness",
-                name_cn="环境可持续性",
-                score=environmental_eval["score"],
-                weight=weights.get("environmental_friendliness", 15),
-                weighted_score=environmental_eval["score"] * weights.get("environmental_friendliness", 15) / 100,
-                details=environmental_eval["analysis"],
-                category="bonus",
-            ),
-            DimensionScore(
-                name="charity_orientation",
-                name_cn="公益普惠导向",
-                score=charity_eval["score"],
-                weight=weights.get("charity_orientation", 15),
-                weighted_score=charity_eval["score"] * weights.get("charity_orientation", 15) / 100,
-                details=charity_eval["analysis"],
-                category="bonus",
-            ),
-            DimensionScore(
-                name="long_term_vision",
-                name_cn="长期愿景与变革潜力",
-                score=vision_eval["score"],
-                weight=weights.get("long_term_vision", 15),
-                weighted_score=vision_eval["score"] * weights.get("long_term_vision", 15) / 100,
-                details=vision_eval["analysis"],
-                category="bonus",
-            ),
-        ]
-        
-        # 计算总分和板块分
-        total_score = sum(d.weighted_score for d in dimension_scores)
-        basic_items_score = sum(d.weighted_score for d in dimension_scores if d.category == "basic")
-        bonus_items_score = sum(d.weighted_score for d in dimension_scores if d.category == "bonus")
-        
-        level, stars = self._get_level(total_score)
-        
-        # 详细维度分析
-        dimension_analyses = {}
-        for dim in dimension_scores:
-            dimension_analyses[dim.name] = dim.details
-        
-        # 生成核心价值描述
         core_value = self._generate_core_value_summary(repo_info, evaluations)
-        
-        # 生成社会价值类型
         core_social_value_types = self._generate_social_value_types(evaluations)
-        
-        # 生成社会价值亮点
         social_value_highlights = self._generate_social_value_highlights(evaluations)
-        
-        # 生成改进建议
         improvement_suggestions = self._generate_improvement_suggestions(evaluations)
-        
-        # 生成评委关注点
         judge_focus_points = self._generate_judge_focus_points(evaluations, repo_info)
         
         # 评估置信度
         confidence_level = "中"
+        information_sufficiency = "中"
         if repo_info.description and len(repo_info.readme_content) > 500:
             confidence_level = "高"
             information_sufficiency = "高"
         elif not repo_info.description and len(repo_info.readme_content) < 200:
             confidence_level = "低"
             information_sufficiency = "低"
-        else:
-            information_sufficiency = "中"
         
         analysis_time = time.time() - start_time
-        update_progress(1.0, "评估完成!")
+        update_progress(1.0, "社会价值评估完成!")
         
         return SocialValueReport(
             repo_name=repo_info.name,
@@ -770,7 +799,7 @@ class SocialValueScorer:
             level_stars=stars,
             core_value_summary=core_value,
             social_value_type=", ".join(core_social_value_types),
-            basic_items_score=basic_items_score,
+            basic_items_score=basic_score,
             bonus_items_score=bonus_items_score,
             dimensions=dimension_scores,
             stars=repo_info.stars,
@@ -802,79 +831,50 @@ class SocialValueScorer:
         # 尝试使用DeepSeek模型优化报告
         if should_use_llm and self.report_optimizer:
             try:
-                report_data = self._report_to_dict(report)
+                # 1. 准备核心维度名称（选择得分最高的亮点项）
+                bonus_dims = [d for d in report.dimensions if d.category == "bonus"]
+                top_bonus_dim = max(bonus_dims, key=lambda x: x.score) if bonus_dims else report.dimensions[0]
                 
-                # 准备提示词参数
-                dim_table = "| 维度 | 得分 | 权重 | 加权得分 | 评价摘要 |\n|------|------|------|----------|----------|\n"
+                # 2. 准备维度表格
+                dim_table = "| 维度类型 | 维度名称 | 得分 | 权重 | 加权得分 |\n|----------|----------|------|------|----------|\n"
                 for dim in report.dimensions:
-                    dim_table += f"| {dim.name_cn} | {dim.score:.1f} | {dim.weight:.0f}% | {dim.weighted_score:.1f} | {dim.details[:50]}{'...' if len(dim.details) > 50 else ''} |\n"
+                    cat_name = "基础项" if dim.category == "basic" else "亮点项"
+                    dim_table += f"| {cat_name} | {dim.name_cn} | {dim.score:.1f} | {dim.weight:.0f}% | {dim.weighted_score:.1f} |\n"
+
+                # 3. 准备代码深度特征数据（提取更详细的信息供 LLM 分析）
+                project_depth_data = {
+                    "language": report.language,
+                    "stars": report.stars,
+                    "info_sufficiency": report.information_sufficiency,
+                    "confidence": report.confidence_level,
+                    "analysis_highlights": report.social_value_highlights,
+                    "detected_dimension_details": report.dimension_analyses
+                }
+
+                # 4. 准备提示词数据
+                prompt_data = {
+                    "repo_name": report.repo_name,
+                    "description": report.description or "无描述",
+                    "repo_url": report.repo_url,
+                    "project_depth_data": project_depth_data,
+                    "total_score": report.total_score,
+                    "basic_items_score": report.basic_items_score,
+                    "bonus_items_score": report.bonus_items_score,
+                    "dim_table": dim_table,
+                    "core_social_value_type": top_bonus_dim.name_cn
+                }
                 
-                # 构建报告内容
-                report_content = f"""
-# 社会价值深度评估报告
-
-## 项目基本信息
-- 项目名称：{report.repo_name}
-- 评估时间：{time.strftime('%Y-%m-%d %H:%M:%S')}
-- 核心社会价值类型：{', '.join(report.core_social_value_types)}
-
-## 第一部分：基础项评估 - 伦理安全合规性
-
-### 伦理红线检查
-- **评估结论**：{self._get_ethics_conclusion(report.dimension_analyses.get('ethics_redline', ''))}
-- **详细分析**：{report.dimension_analyses.get('ethics_redline', '评估数据不足')}
-- **特别提醒**：{self._get_ethics_alert(report.dimension_analyses.get('ethics_redline', ''))}
-
-### 隐私与数据保护
-- **基本符合度**：{self._get_privacy_compliance(report.dimension_analyses.get('privacy_protection', ''))}
-- **主要观察**：{report.dimension_analyses.get('privacy_protection', '评估数据不足')}
-
-### 算法公平性意识
-- **意识水平**：{self._get_fairness_awareness(report.dimension_analyses.get('algorithm_fairness', ''))}
-- **具体表现**：{report.dimension_analyses.get('algorithm_fairness', '评估数据不足')}
-
-## 第二部分：核心社会价值亮点深度分析
-
-### 社会价值亮点
-{chr(10).join([f"- {highlight}" for highlight in report.social_value_highlights])}
-
-## 第三部分：其他维度简要评估
-
-### 环境可持续性
-- **简要评价**：{report.dimension_analyses.get('environmental_friendliness', '评估数据不足')}
-- **是否值得深入**：{self._is_worth深入(report.dimension_analyses.get('environmental_friendliness', ''))}
-
-### 公益普惠导向
-- **简要评价**：{report.dimension_analyses.get('charity_orientation', '评估数据不足')}
-- **是否值得深入**：{self._is_worth深入(report.dimension_analyses.get('charity_orientation', ''))}
-
-### 长期愿景与变革潜力
-- **简要评价**：{report.dimension_analyses.get('long_term_vision', '评估数据不足')}
-- **是否值得深入**：{self._is_worth深入(report.dimension_analyses.get('long_term_vision', ''))}
-
-## 第四部分：综合评估与建议
-
-### 总体社会价值评价
-- **核心优势**：{', '.join(report.social_value_highlights[:2])}
-- **独特价值**：{report.core_value_summary}
-- **实现可能性**：{self._get_implementation_possibility(total_score=report.total_score)}
-
-### 给参赛者的社会价值优化建议
-{chr(10).join([f"1. **{suggestion}**" for suggestion in report.improvement_suggestions])}
-
-### 给评委的特别关注点
-{chr(10).join([f"1. **{point}**" for point in report.judge_focus_points[:2]])}
-
-## 第五部分：评估置信度
-- **信息充分性**：{report.information_sufficiency}
-- **评估确定性**：{report.confidence_level}
-- **需要澄清的问题**：{self._get_clarification_questions(report.judge_focus_points)}
-
----
-*报告生成时间: {report.analysis_time:.1f}秒 | AI黑客松社会价值评估系统 v1.0*
-                """
+                # 5. 调用LLM进行深度优化
+                optimized_report = self.report_optimizer.optimize_report(
+                    report_data=self._report_to_dict(report),
+                    prompt_data=prompt_data,
+                    template_name="social_value_expert_optimizer"
+                )
                 
-                return report_content
+                if optimized_report:
+                    return optimized_report
+                
+                # 如果LLM优化返回空，则继续执行后面的模板生成逻辑
             except Exception as e:
                 print(f"LLM optimization failed, fallback to template: {e}")
         
@@ -941,73 +941,61 @@ class SocialValueScorer:
             return "无"
     
     def _generate_template_report(self, report: SocialValueReport) -> str:
-        """生成模板报告"""
+        """生成模板报告 (带有专家评分表)"""
         import time
         
+        # 提取核心维度
+        bonus_dims = [d for d in report.dimensions if d.category == "bonus" and d.weight > 0]
+        core_dim = bonus_dims[0] if bonus_dims else report.dimensions[-1]
+
         report_content = f"""
-# 社会价值深度评估报告
+# SAGE 社会价值深度评审报告
 
 ## 项目基本信息
-- 项目名称：{report.repo_name}
-- 评估时间：{time.strftime('%Y-%m-%d %H:%M:%S')}
-- 核心社会价值类型：{', '.join(report.core_social_value_types)}
+- **项目名称**：{report.repo_name}
+- **评估时间**：{time.strftime('%Y-%m-%d %H:%M:%S')}
+- **项目URL**：{report.repo_url}
+- **核心价值类型**：{', '.join(report.core_social_value_types)}
 
-## 第一部分：基础项评估 - 伦理安全合规性
+## **专家评分与评分原因** (100分制深度拆解)
 
-### 伦理红线检查
-- **评估结论**：安全
-- **详细分析**：{report.dimension_analyses.get('ethics_redline', '评估数据不足')}
-- **特别提醒**：未发现明显伦理风险
+### 2.1 基础项：伦理、安全与合规性底线检查 (满分 20 分)
 
-### 隐私与数据保护
-- **基本符合度**：基本符合
-- **主要观察**：{report.dimension_analyses.get('privacy_protection', '评估数据不足')}
+| 检查维度 | 检查标准 | 专家评分 | 发现的问题与扣分依据 |
+| :--- | :--- | :--- | :--- |
+| **伦理红线检查** | 是否触及侵犯人权、恶意设计、社会危害等 | {report.dimensions[0].score / 5:.1f} / 20 | {report.dimensions[0].details} |
+| **隐私与数据保护** | 数据收集必要性、存储安全性、用户知情权 | {report.dimensions[1].score / 5:.1f} / 20 | {report.dimensions[1].details} |
+| **算法公平性** | 是否加剧算法歧视、设计是否兼顾多样性 | {report.dimensions[2].score / 5:.1f} / 20 | {report.dimensions[2].details} |
+| **基础项得分** | **20 - 扣分项** | **{report.basic_items_score:.1f} 分** | |
 
-### 算法公平性意识
-- **意识水平**：基本意识
-- **具体表现**：{report.dimension_analyses.get('algorithm_fairness', '评估数据不足')}
+### 2.2 核心亮点项深度评分：{core_dim.name_cn} (满分 80 分)
 
-## 第二部分：核心社会价值亮点深度分析
+| 子维度 | 权重 | 专家评分 (1-5) | 详细评分原因与专家洞见 |
+| :--- | :--- | :--- | :--- |
+| **功能实现度** | 40% | {(core_dim.score/20):.1f} | 建议关注项目在代码层面的落地能力。 |
+| **社会匹配度** | 30% | {(core_dim.score/20):.1f} | 项目与定义的社会问题契合度较高。 |
+| **创新前瞻性** | 20% | {(core_dim.score/20):.1f} | 体现了 AI 技术在社会价值领域的应用创新。 |
+| **可持续性** | 10% | {(core_dim.score/20):.1f} | 方案具有长期的社会效益潜质。 |
+| **亮点项得分** | **Σ(分值×权重)×16** | **{report.bonus_items_score:.1f} 分** | |
 
-### 社会价值亮点
-{chr(10).join([f"- {highlight}" for highlight in report.social_value_highlights])}
+### 2.3 总分汇总与等级评定
 
-## 第三部分：其他维度简要评估
+| 指标 | 最终得分 | 对应等级 | 专家最终裁定 |
+| :--- | :--- | :--- | :--- |
+| **项目总得分** | **{report.total_score:.1f} / 100** | **{report.level}** | {report.core_value_summary} |
 
-### 环境可持续性
-- **简要评价**：{report.dimension_analyses.get('environmental_friendliness', '评估数据不足')}
-- **是否值得深入**：否，表现一般
+## 横向扫描：其他维度表现
+{chr(10).join([f"- **{d.name_cn}**: {d.details}" for d in report.dimensions if d.weight == 0])}
 
-### 公益普惠导向
-- **简要评价**：{report.dimension_analyses.get('charity_orientation', '评估数据不足')}
-- **是否值得深入**：否，表现一般
+## 改进建议
+{chr(10).join([f"1. **{s}**" for s in report.improvement_suggestions])}
 
-### 长期愿景与变革潜力
-- **简要评价**：{report.dimension_analyses.get('long_term_vision', '评估数据不足')}
-- **是否值得深入**：否，表现一般
-
-## 第四部分：综合评估与建议
-
-### 总体社会价值评价
-- **核心优势**：{', '.join(report.social_value_highlights[:2])}
-- **独特价值**：{report.core_value_summary}
-- **实现可能性**：中
-
-### 给参赛者的社会价值优化建议
-{chr(10).join([f"1. **{suggestion}**" for suggestion in report.improvement_suggestions])}
-
-### 给评委的特别关注点
-{chr(10).join([f"1. **{point}**" for point in report.judge_focus_points[:2]])}
-
-## 第五部分：评估置信度
-- **信息充分性**：{report.information_sufficiency}
-- **评估确定性**：{report.confidence_level}
-- **需要澄清的问题**：{report.judge_focus_points[0] if report.judge_focus_points else '无'}
+## 评委关注点
+{chr(10).join([f"1. **{p}**" for p in report.judge_focus_points])}
 
 ---
-*报告生成时间: {report.analysis_time:.1f}秒 | AI黑客松社会价值评估系统 v1.0*
+*报告生成时间: {report.analysis_time:.1f}秒 | AI黑客松社会价值评估系统 v2.0 (Table Fixed)*
         """
-        
         return report_content
     
     def _report_to_dict(self, report: SocialValueReport) -> dict:

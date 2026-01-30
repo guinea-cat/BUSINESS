@@ -36,7 +36,7 @@ pip install -r requirements.txt
 
 # 设置环境变量（用于DeepSeek模型）
 export DEEPSEEK_API_BASE=http://localhost:8000/v1
-export DEEPSEEK_API_KEY=EMPTY
+export DEEPSEEK_API_KEY=sk-b3c44f768fc4460a9d943a48c3030d93
 export DEEPSEEK_MODEL=Valdemardi/DeepSeek-R1-Distill-Qwen-32B-AWQ
 ```
 

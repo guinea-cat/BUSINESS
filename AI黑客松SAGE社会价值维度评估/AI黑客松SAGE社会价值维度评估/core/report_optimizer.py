@@ -81,12 +81,14 @@ class ReportOptimizer:
             print(f"Warning: Failed to init OpenAI client: {e}")
             self.client = None
     
-    def optimize_report(self, report_data: Dict[str, Any], prompt_data: Optional[Dict[str, Any]] = None, timeout: int = 300) -> Optional[str]:
+    def optimize_report(self, report_data: Dict[str, Any], prompt_data: Optional[Dict[str, Any]] = None, 
+                        template_name: str = "innovation_report_optimizer", timeout: int = 300) -> Optional[str]:
         """优化报告输出
         
         Args:
             report_data: 评估报告的结构化数据
             prompt_data: 提示词数据，包含预构建的提示词内容
+            template_name: 使用的提示词模板名称
             timeout: 超时时间（秒）
             
         Returns:
@@ -96,22 +98,40 @@ class ReportOptimizer:
             return None
         
         # 构建提示词
-        prompt = self._build_prompt(report_data, prompt_data)
+        from .prompt_engineering import get_prompt_library
+        lib = get_prompt_library()
+        
+        system_prompt = self.SYSTEM_PROMPT
+        
+        if prompt_data:
+            # 如果是社会价值评估模板，使用特定逻辑
+            if template_name == "social_value_expert_optimizer":
+                try:
+                    prompt_bundle = lib.generate_prompt(template_name, **prompt_data)
+                    system_prompt = prompt_bundle["system_prompt"]
+                    prompt = prompt_bundle["user_prompt"]
+                except Exception as e:
+                    print(f"Failed to generate social value prompt: {e}")
+                    prompt = self._build_prompt(report_data, prompt_data)
+            else:
+                prompt = self._build_prompt(report_data, prompt_data)
+        else:
+            prompt = self._build_prompt(report_data, None)
         
         try:
             # 深度思考模式：使用更低的温度，让模型更加理性和深入
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,  # 降低温度，提高思考深度和一致性
+                temperature=0.3,
                 max_tokens=16384,
                 timeout=timeout,
-                top_p=0.9,  # 控制生成的多样性
-                frequency_penalty=0.1,  # 减少重复内容
-                presence_penalty=0.1,  # 鼓励新内容
+                top_p=0.9,
+                frequency_penalty=0.1,
+                presence_penalty=0.1,
             )
             
             # 处理模型输出，添加AI幻觉防护提示
