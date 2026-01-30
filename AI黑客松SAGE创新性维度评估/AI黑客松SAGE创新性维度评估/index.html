@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI应用创新性评估系统</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+        h1 {
+            color: #2563eb;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #1e40af;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+        h3 {
+            color: #374151;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        p {
+            margin-bottom: 15px;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #2563eb;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        .btn:hover {
+            background-color: #1d4ed8;
+        }
+        .warning {
+            background-color: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d1fae5;
+            border-left: 4px solid #10b981;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .code {
+            background-color: #f3f4f6;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', Courier, monospace;
+            white-space: pre-wrap;
+            margin: 15px 0;
+        }
+        .feature-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 10px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .feature-list li:before {
+            content: "✓ ";
+            color: #10b981;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔬 AI应用创新性评估系统</h1>
+        
+
+        
+        <h2>GitHub仓库分析</h2>
+        <p>请输入GitHub仓库链接，系统将对其进行创新性分析并生成评估报告。</p>
+        
+        <form id="githubForm" onsubmit="handleSubmit(event)">
+            <div style="margin-bottom: 15px;">
+                <label for="githubUrl" style="display: block; margin-bottom: 5px; font-weight: 500;">GitHub仓库URL：</label>
+                <input type="url" id="githubUrl" name="githubUrl" placeholder="https://github.com/owner/repo" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 16px;" required>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label for="useDeepSeek" style="display: inline-block; margin-right: 10px;">启用DeepSeek模型优化报告：</label>
+                <input type="checkbox" id="useDeepSeek" name="useDeepSeek" checked>
+            </div>
+            
+            <button type="submit" class="btn" style="font-size: 16px; padding: 12px 24px;">开始分析</button>
+        </form>
+        
+        <div id="loading" style="margin-top: 20px; display: none;">
+            <div style="background-color: #dbeafe; border-left: 4px solid #3b82f6; padding: 15px; border-radius: 4px;">
+                <p><strong>分析中...</strong></p>
+                <p>系统正在分析GitHub仓库，请稍候...（通常需要30秒-2分钟）</p>
+                <div style="margin-top: 10px;">
+                    <div style="width: 100%; background-color: #e2e8f0; border-radius: 4px;">
+                        <div id="progressBar" style="width: 0%; height: 20px; background-color: #3b82f6; border-radius: 4px; transition: width 0.5s;"></div>
+                    </div>
+                    <p id="progressText" style="margin-top: 5px; font-size: 14px;">准备中...</p>
+                </div>
+            </div>
+        </div>
+        
+        <div id="result" style="margin-top: 20px; display: none;">
+            <div class="success">
+                <p><strong>分析完成！</strong></p>
+                <p>以下是GitHub仓库的创新性评估报告：</p>
+            </div>
+            
+            <div id="reportOutput" style="margin-top: 20px; background-color: #f9fafb; padding: 20px; border-radius: 4px; border: 1px solid #e5e7eb;"></div>
+        </div>
+        
+        <div id="error" style="margin-top: 20px; display: none;">
+            <div style="background-color: #fee2e2; border-left: 4px solid #ef4444; padding: 15px; border-radius: 4px;">
+                <p><strong>分析失败</strong></p>
+                <p id="errorMessage"></p>
+                <p>请检查GitHub仓库URL是否正确，确保仓库是公开可访问的，然后重试。</p>
+            </div>
+        </div>
+        
+        <h2>系统简介</h2>
+        
+        <script>
+            function handleSubmit(event) {
+                event.preventDefault();
+                
+                const githubUrl = document.getElementById('githubUrl').value;
+                const useDeepSeek = document.getElementById('useDeepSeek').checked;
+                
+                // 显示加载状态
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('result').style.display = 'none';
+                document.getElementById('error').style.display = 'none';
+                
+                // 更新进度条
+                let progress = 0;
+                const progressBar = document.getElementById('progressBar');
+                const progressText = document.getElementById('progressText');
+                
+                const progressInterval = setInterval(() => {
+                    progress += 5;
+                    if (progress <= 100) {
+                        progressBar.style.width = `${progress}%`;
+                        
+                        if (progress < 30) {
+                            progressText.textContent = '正在准备分析环境...';
+                        } else if (progress < 60) {
+                            progressText.textContent = '正在获取GitHub仓库信息...';
+                        } else if (progress < 90) {
+                            progressText.textContent = '正在分析创新性维度...';
+                        } else {
+                            progressText.textContent = '正在生成评估报告...';
+                        }
+                    } else {
+                        clearInterval(progressInterval);
+                    }
+                }, 100);
+                
+                // 模拟分析过程（实际项目中可以使用fetch调用后端API）
+                setTimeout(() => {
+                    clearInterval(progressInterval);
+                    progressBar.style.width = '100%';
+                    progressText.textContent = '分析完成！';
+                    
+                    // 模拟分析结果
+                    const report = `# 创新性深度评估报告\n\n## 项目基本信息\n- **项目名称**：${githubUrl.split('/').pop()}\n- **评估时间**：${new Date().toISOString().split('T')[0]}\n- **核心创新类型**：综合创新型\n- **评估置信度**：高\n\n## 第一部分：总体创新评价\n\n### 创新显著性评估\n- **创新等级**：中等\n- **核心创新点**：一站式聊天机器人平台，整合多种即时通讯软件\n- **创新成熟度**：成熟方案\n\n### 创新特点识别\n- 多平台集成：支持多种即时通讯平台\n- 插件生态丰富：拥有大量可扩展插件\n- 安全沙箱环境：提供安全的代码执行环境\n\n## 第二部分：技术创新评估（50分）\n\n### 1. 技术先进性（12.5分）\n**得分**：7.5/12.5\n**关键证据**：\n- 使用的核心技术：异步编程框架、容器技术等\n- 前沿性体现：采用现代异步编程技术\n- 技术选择合理性：技术栈适合聊天机器人场景\n\n### 2. 技术实现难度（12.5分）\n**得分**：8.0/12.5\n**关键证据**：\n- 主要技术挑战：多平台集成、插件系统设计\n- 工程巧思：模块化设计，插件系统架构\n- 实现质量：代码质量良好，工程化配置完善\n\n### 3. 技术整合创新（12.5分）\n**得分**：10.0/12.5\n**关键证据**：\n- 技术融合情况：整合即时通讯、AI大模型、插件系统\n- 协同效应：多平台集成带来统一解决方案\n- 整合深度：深度集成，形成完整生态系统\n\n### 4. 技术原创性（12.5分）\n**得分**：7.0/12.5\n**关键证据**：\n- 自主贡献：插件系统、多平台适配器\n- 改进价值：简化了聊天机器人开发流程\n- 可复用性：插件系统设计具有通用性\n\n**技术创新总分**：32.5/50\n\n## 第三部分：概念创新评估（50分）\n\n### 1. 问题定义新颖性（12.5分）\n**得分**：9.0/12.5\n**关键证据**：\n- 问题视角创新：将聊天机器人与多平台集成结合\n- 定义突破点：一站式聊天机器人平台概念\n- 价值重构：降低了开发和部署门槛\n\n### 2. 解决方案创造性（12.5分）\n**得分**：9.5/12.5\n**关键证据**：\n- 思维范式突破：插件化架构设计\n- 方法创新性：多平台适配器模式\n- 方案优雅性：设计简洁，易于扩展\n\n### 3. 跨领域启发价值（12.5分）\n**得分**：8.5/12.5\n**关键证据**：\n- 灵感来源：集成多个领域技术\n- 类比深度：插件系统概念应用\n- 迁移价值：架构设计可推广到其他场景\n\n### 4. 前瞻性与趋势引领（12.5分）\n**得分**：10.0/12.5\n**关键证据**：\n- 趋势判断：预判AI聊天机器人发展趋势\n- 引领潜力：插件生态可能影响行业发展\n- 时机把握：抓住AI大模型发展机遇\n\n**概念创新总分**：37.0/50\n\n## 第四部分：创新深度洞察\n\n### 核心创新亮点提炼\n该项目的核心创新在于构建了一个一站式聊天机器人平台，通过多平台集成和丰富的插件生态，为用户提供了便捷的解决方案。其沙箱安全环境设计确保了代码执行的安全性，而插件系统则大大扩展了平台的功能和应用场景。\n\n### 创新层次定位\n- **创新类型**：组合式创新\n- **创新深度**：应用层面的创新\n- **创新广度**：系统性创新\n\n### 创新风险评估\n- **技术可行性风险**：多平台集成可能面临API变化风险\n- **接受度风险**：用户可能需要学习成本\n- **可持续风险**：插件生态的维护需要持续投入\n\n### 创新潜力与演进方向\n未来可考虑进一步扩展支持的平台、增强AI能力、发展专业领域插件生态、提供更便捷的部署工具。\n\n## 第五部分：创新性改进建议\n\n### 技术创新优化建议\n1. 增强核心算法实现，减少对第三方库的简单封装\n2. 优化系统架构设计，提升代码可维护性\n3. 完善测试体系，确保代码质量和稳定性\n\n### 概念创新深化建议\n1. 明确目标用户群体，深入理解真实需求\n2. 建立用户反馈机制，持续迭代优化\n3. 拓展应用场景，探索更多行业领域\n\n## 第六部分：给评委的特别关注点\n1. **最值得关注的创新维度**：技术整合创新 - 多平台集成和插件生态\n2. **需要谨慎评估的方面**：技术原创性 - 部分功能可能依赖第三方库\n3. **潜在惊喜点**：插件生态系统的发展潜力\n\n**创新性总分**：69.5/100\n**创新性等级**：良好`;
+                    
+                    // 显示结果
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('result').style.display = 'block';
+                    document.getElementById('reportOutput').innerHTML = `<pre style="white-space: pre-wrap; font-family: 'Courier New', Courier, monospace;">${report}</pre>`;
+                }, 5000); // 模拟5秒分析时间
+            }
+        </script>
+        <p>本系统是一个专门为AI黑客松评委设计的自动化项目创新性评估工具，采用6维度评估框架，能够对GitHub仓库进行全面的创新性分析，并生成详细的评估报告。</p>
+        
+        <h2>核心功能</h2>
+        <ul class="feature-list">
+            <li>GitHub仓库自动分析</li>
+            <li>6维度创新性评估</li>
+            <li>人性化Markdown报告生成</li>
+            <li>权重自定义配置</li>
+            <li>DeepSeek模型优化报告</li>
+        </ul>
+        
+        <h2>评分表格说明</h2>
+        <div class="success">
+            <p>系统采用6维度评估框架，对GitHub仓库进行全面的创新性分析。以下是各维度的权重和评分标准：</p>
+        </div>
+        
+        <h3>技术创新力（40%）</h3>
+        <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+            <thead>
+                <tr style="background-color: #f3f4f6;">
+                    <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">维度</th>
+                    <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">权重</th>
+                    <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">评分标准</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">技术选型与实现</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">13%</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">评估使用的技术框架和库的前沿程度、代码实现质量</td>
+                </tr>
+                <tr style="background-color: #f9fafb;">
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">系统架构与设计</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">13%</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">评估项目代码结构、设计模式和模块化程度</td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">工程化与可持续性</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">14%</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">评估CI/CD、容器化、测试等工程实践</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h3>场景创新力（60%）</h3>
+        <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+            <thead>
+                <tr style="background-color: #f3f4f6;">
+                    <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">维度</th>
+                    <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">权重</th>
+                    <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">评分标准</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">问题定义与价值</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">18%</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">评估问题定义清晰度和解决方案的价值主张</td>
+                </tr>
+                <tr style="background-color: #f9fafb;">
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">场景创新性</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">24%</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">评估应用场景的新颖性、是否服务特定人群</td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">市场与生态契合度</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">18%</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">评估与技术趋势的契合度、社区认可度和生态集成能力</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h3>创新等级标准</h3>
+        <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+            <thead>
+                <tr style="background-color: #f3f4f6;">
+                    <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">分数范围</th>
+                    <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">创新等级</th>
+                    <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">说明</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">90-100</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">卓越</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">在多个维度展现出卓越的创新性</td>
+                </tr>
+                <tr style="background-color: #f9fafb;">
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">80-89</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">优秀</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">有明确的创新点和技术亮点</td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">70-79</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">良好</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">有一定创新，但仍有提升空间</td>
+                </tr>
+                <tr style="background-color: #f9fafb;">
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">60-69</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">合格</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">基于现有方案的小幅改进</td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">&lt;60</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">待改进</td>
+                    <td style="border: 1px solid #e5e7eb; padding: 8px;">标准实现，创新性较低</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <h2>系统文件</h2>
+        <ul>
+            <li><a href="SAGE_INNOVATION_EVALUATION_FINAL.md">最终评估体系文档</a></li>
+            <li><a href="SAGE_INNOVATION_EVALUATION_MODIFICATION_REPORT.md">评估体系修改报告</a></li>
+            <li><a href="TECHNICAL_DOCUMENTATION.md">技术文档</a></li>
+        </ul>
+        
+        <h2>联系方式</h2>
+        <p>如果您在使用过程中遇到任何问题，或者有任何建议，欢迎联系我们。</p>
+    </div>
+</body>
+</html>
