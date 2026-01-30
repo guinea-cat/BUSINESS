@@ -127,16 +127,16 @@ class ReportOptimizer:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=16384,
+                max_tokens=8192,
                 timeout=timeout,
                 top_p=0.9,
                 frequency_penalty=0.1,
                 presence_penalty=0.1,
             )
             
-            # 处理模型输出，添加AI幻觉防护提示
+            # 处理模型输出
             output = response.choices[0].message.content
-            return self._add_ai_hallucination_warning(output)
+            return output
         except Exception as e:
             print(f"Report optimization failed: {e}")
             return None

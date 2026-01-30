@@ -14,9 +14,9 @@ MODELSCOPE_API_TOKEN = os.getenv("MODELSCOPE_API_TOKEN", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 
 # DeepSeek模型配置 (用于报告优化)
-DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "http://localhost:8000/v1")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "EMPTY")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "Valdemardi/DeepSeek-R1-Distill-Qwen-32B-AWQ")
+DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
 # 多Token池配置（逗号分隔）
 GITHUB_TOKENS = [t.strip() for t in os.getenv("GITHUB_TOKENS", "").split(",") if t.strip()]
