@@ -120,7 +120,34 @@ def format_markdown(data: dict, total_time: float = 0) -> str:
     md += f"### 🏢 商业模式可行性评述\n{process_citations(ba.get('business_model_critique', 'N/A'))}\n\n"
     md += f"### 🛡️ 技术壁垒与护城河\n{process_citations(ba.get('technical_moat', 'N/A'))}\n\n"
     
-    # 4. VC 灵魂拷问 (新模块)
+    # 4. 商业潜力量化评估 (新增)
+    vm = data.get("valuation_model", {})
+    if vm:
+        md += f"## 💎 商业潜力量化评估 (Valuation Model)\n"
+        md += f"**综合评分**: `{vm.get('total_score', 'N/A')}` | **投资评级**: `{vm.get('rating', 'N/A')}`\n\n"
+        md += f"> **核心摘要**: {process_citations(vm.get('summary', 'N/A'))}\n\n"
+        
+        md += "| 评估维度 | 分数 | 满分 | 核心分析 |\n"
+        md += "| :--- | :--- | :--- | :--- |\n"
+        
+        dimensions = vm.get("dimensions", {})
+        dim_map = {
+            "market": "市场潜力",
+            "product": "产品与技术",
+            "business_model": "商业模式",
+            "team": "团队竞争力",
+            "execution": "验证与风险"
+        }
+        
+        for key, label in dim_map.items():
+            d = dimensions.get(key, {})
+            score = d.get("score", "N/A")
+            max_s = d.get("max_score", "N/A")
+            analysis = process_citations(d.get("analysis", "N/A"))
+            md += f"| {label} | {score} | {max_s} | {analysis} |\n"
+        md += "\n"
+
+    # 5. VC 灵魂拷问
     vg = data.get("vc_grill", [])
     if vg:
         md += "## 🔥 VC 灵魂拷问 (The VC Grill)\n"
@@ -128,12 +155,19 @@ def format_markdown(data: dict, total_time: float = 0) -> str:
             md += f"**Q: {item.get('question')}**\n\n"
             md += f"**A:** {process_citations(item.get('answer'))}\n\n"
     
-    # 5. 竞品
+    # 6. 痛点真实性验证 (新增)
+    ppv = data.get("pain_point_validation", {})
+    if ppv:
+        md += "## 🎯 痛点真实性验证\n"
+        md += f"**真实性评分**: `{ppv.get('score', 'N/A')}/10`\n\n"
+        md += f"**评估逻辑**: {process_citations(ppv.get('reason', 'N/A'))}\n\n"
+
+    # 7. 竞品
     md += "## 🎯 竞争格局与替代品\n"
     for comp in data.get("competitors", []):
         md += f"### 🏢 {comp.get('name')}\n- **类型**: {comp.get('type')}\n- **分析**: {process_citations(comp.get('comparison'))}\n\n"
     
-    # 6. 融资与舆情
+    # 8. 融资与舆情
     fe = data.get("funding_ecosystem", {})
     ps = data.get("public_sentiment", {})
     md += f"## 💹 融资生态 & 舆情研判\n"
@@ -141,12 +175,12 @@ def format_markdown(data: dict, total_time: float = 0) -> str:
     md += f"- **动态摘要**: {process_citations(fe.get('trend_summary', 'N/A'))}\n"
     md += f"- **舆情倾向**: {ps.get('label')} — {process_citations(ps.get('summary'))}\n\n"
     
-    # 7. 风险
+    # 9. 风险
     md += "## ⚠️ 核心风险识别\n"
     for risk in data.get("risk_assessment", []):
         md += f"- {process_citations(risk)}\n"
     
-    # 8. 数据来源与参考文献
+    # 10. 数据来源与参考文献
     md += "\n---\n## 🔗 数据来源与参考文献\n"
     evidence = data.get("raw_evidence", [])
     if evidence:
