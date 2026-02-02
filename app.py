@@ -3,10 +3,12 @@ app.py
 Gradio Web 界面演示。
 """
 
+import os
 import gradio as gr
 import config
 import logging
 import time
+from datetime import datetime
 from agent import BusinessResearcher
 
 # 初始化日志
@@ -19,7 +21,7 @@ def run_analysis(file_obj):
     使用 yield 机制实时返回进度状态（优化用户体验）。
     """
     if file_obj is None:
-        yield "# ⚠️ 请先上传 PDF 文件", {}
+        yield "# ⚠️ 请先上传 PDF 文件", {}, None
         return
     
     try:
@@ -31,7 +33,7 @@ def run_analysis(file_obj):
         
         # 阶段 1：PDF 解析
         elapsed = time.time() - start_time
-        yield f"## 📄 正在解析 PDF 与图片... (已耗时 {elapsed:.1f}s)\n\n请稍候，系统正在提取文本内容和视觉元素。", {}
+        yield f"## 📄 正在解析 PDF 与图片... (已耗时 {elapsed:.1f}s)\n\n请稍候，系统正在提取文本内容和视觉元素。", {}, None
         
         import utils
         pdf_content = utils.extract_content_from_pdf(pdf_path)
@@ -41,22 +43,18 @@ def run_analysis(file_obj):
         # 阶段 2：视觉分析
         if bp_images:
             elapsed = time.time() - start_time
-            yield f"## 🖼️ 正在并发视觉分析... (已耗时 {elapsed:.1f}s)\n\n检测到 {len(bp_images)} 张图片，正在进行 2x2 拼图与并发分析。", {}
+            yield f"## 🖼️ 正在并发视觉分析... (已耗时 {elapsed:.1f}s)\n\n检测到 {len(bp_images)} 张图片，正在进行 2x2 拼图与并发分析。", {}, None
             visual_descriptions = utils.describe_visual_elements(researcher.vision_client, bp_images)
         else:
             visual_descriptions = ""
         
         # 阶段 3-4：赛道感知与关键词生成（合并优化）
         elapsed = time.time() - start_time
-        yield f"## 🎯 正在进行赛道感知与关键词生成... (已耗时 {elapsed:.1f}s)\n\n【性能优化】单次 LLM 调用同时完成赛道识别和关键词生成，节省 2-3 秒。", {}
-        
-        # 注意：这里不再单独调用 _detect_industry 和 _get_search_keywords
-        # 因为 analyze_bp_pipeline 内部已经使用了优化后的 _perceive_context 方法
-        # 直接进入完整分析流程
+        yield f"## 🎯 正在进行赛道感知与关键词生成... (已耗时 {elapsed:.1f}s)\n\n【性能优化】单次 LLM 调用同时完成赛道识别和关键词生成，节省 2-3 秒。", {}, None
         
         # 阶段 5：并发 JSON 生成
         elapsed = time.time() - start_time
-        yield f"## 🧠 正在生成最终研报... (已耗时 {elapsed:.1f}s)\n\n并发执行 **4 路并发分析**：\n- 基础信息组（项目画像 + 赛道分析）\n- 外部情报组（竞品 + 融资生态）\n- **估值模型组**（VC 评分）\n- **风险评估组**（拷问 + 痛点 + 风险）", {}
+        yield f"## 🧠 正在生成最终研报... (已耗时 {elapsed:.1f}s)\n\n并发执行 **4 路并发分析**：\n- 基础信息组（项目画像 + 赛道分析）\n- 外部情报组（竞品 + 融资生态）\n- **估值模型组**（VC 评分）\n- **风险评估组**（拷问 + 痛点 + 风险）", {}, None
         
         # 调用完整的分析流水线
         result = researcher.analyze_bp_pipeline(pdf_path)
@@ -66,11 +64,33 @@ def run_analysis(file_obj):
         
         # 格式化 Markdown 报告（包含总耗时）
         markdown_report = format_markdown(result, total_time)
-        yield markdown_report, result
+        
+        # --- 新增：保存并导出 MD 文件 ---
+        # 确保输出目录存在
+        output_dir = "reports"
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        # 构造文件名：项目名_研报_时间戳.md
+        project_name = result.get("project_identity", {}).get("project_name", "未知项目")
+        # 清洗文件名中的非法字符
+        safe_project_name = "".join([c for c in project_name if c.isalnum() or c in (" ", "_", "-")]).strip()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_name = f"{safe_project_name}_研报_{timestamp}.md"
+        file_path = os.path.abspath(os.path.join(output_dir, file_name))
+        
+        # 写入文件
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(markdown_report)
+            
+        logger.info(f"研报已成功保存至: {file_path}")
+        # -----------------------------
+        
+        yield markdown_report, result, file_path
         
     except Exception as e:
         logger.error(f"UI 处理异常: {e}")
-        yield f"# ❌ 系统处理异常\n{str(e)}", {"status": "error"}
+        yield f"# ❌ 系统处理异常\n{str(e)}", {"status": "error"}, None
 
 def format_markdown(data: dict, total_time: float = 0) -> str:
     """
@@ -202,6 +222,7 @@ def main():
             with gr.Column(scale=1):
                 pdf_input = gr.File(label="上传 BP (PDF)", file_types=[".pdf"])
                 btn = gr.Button("开始全自动分析", variant="primary")
+                out_file = gr.File(label="📥 下载研报 (.md)", interactive=False)
                 gr.Markdown("### ⚙️ 说明\n- 系统将自动识别赛道并进行全网情报检索。\n- 分析耗时预计 45-60 秒。")
                 
             with gr.Column(scale=2):
@@ -211,7 +232,7 @@ def main():
                     with gr.Tab("📊 原始数据"):
                         out_json = gr.JSON()
         
-        btn.click(fn=run_analysis, inputs=pdf_input, outputs=[out_md, out_json], api_name=False)
+        btn.click(fn=run_analysis, inputs=pdf_input, outputs=[out_md, out_json, out_file], api_name=False)
     
     demo.launch(server_port=8081, inbrowser=True)
 
