@@ -123,16 +123,16 @@ def format_markdown(data: dict, total_time: float = 0) -> str:
     md += f"**核心愿景**: *{pi.get('slogan', 'N/A')}*\n\n"
     md += f"### 📝 深度描述\n{process_citations(pi.get('description', 'N/A'))}\n\n"
     md += f"### 💰 盈利模式\n{process_citations(pi.get('revenue_model', 'N/A'))}\n\n"
-    md += f"### 👥 团队背景优势\n{process_citations(pi.get('team_background', 'N/A'))}\n\n"
+    # md += f"### 👥 团队背景优势\n{process_citations(pi.get('team_background', 'N/A'))}\n\n"
     md += f"- **发展阶段**: `{pi.get('stage', 'N/A')}`\n\n"
     
     # 2. 赛道与市场
     ia = data.get("industry_analysis", {})
     md += "## 🌐 赛道分析与市场量化\n"
     md += f"- **识别赛道**: {ia.get('detected_industry', 'N/A')}\n"
-    md += f"- **市场规模**: {process_citations(ia.get('market_size', 'Not Found'))}\n"
-    md += f"- **复合增长率 (CAGR)**: {process_citations(ia.get('cagr', 'Not Found'))}\n"
-    md += f"- **数据来源**: {ia.get('source', 'N/A')}\n\n"
+    # md += f"- **市场规模**: {process_citations(ia.get('market_size', 'Not Found'))}\n"
+    # md += f"- **复合增长率 (CAGR)**: {process_citations(ia.get('cagr', 'Not Found'))}\n"
+    # md += f"- **数据来源**: {ia.get('source', 'N/A')}\n\n"
 
     # 3. 商业深度拆解
     ba = data.get("business_analysis", {})
